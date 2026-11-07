@@ -88,6 +88,9 @@ test('agents: none shows nothing; open lists rows with colored marks; closed hid
   expect(t.join('|')).toContain('サブエージェント')
   expect(t).toContain('2')
   for (const w of ['Explore', '調査', 'Plan', '設計']) expect(t).toContain(w)
+  expect(t).toContain('実行中')
+  expect(t).toContain('待機')
+  expect(textsOf(draw({ agents: { running: 1, rows: [{ ...ROWS[0], state: 'done' }], open: true } }))).toContain('完了')
   expect(colorOf(open, '●')).toBe('blue')
   expect(colorOf(open, '○')).toBe('gray')
   expect(labelsOf(open)).toContain('▴ 閉じる')
@@ -148,8 +151,29 @@ test('breakdown closed hides rows; open shows rows, 概算, exact button, detail
   expect(byKey(open, 'band-exact')).toBeDefined()
   expect(byKey(open, 'band-detail-mcp')).toBeDefined()
   expect(byKey(open, 'band-detail-messages')).toBeUndefined()
-  expect(t.join('|')).toContain('自動 compact まで')
+  expect(t).toContain('自動 compact まで あと 40k（閾値 900k）')
+  const noThreshold = textsOf(draw({ breakdown: { ...BREAKDOWN(true), threshold: null } }))
+  expect(noThreshold).toContain('自動 compact まで あと 40k')
   expect(textsOf(draw({ breakdown: BREAKDOWN(true, null) })).join('')).not.toContain('自動 compact まで')
+  // 順序: 積み上げバー、行、compact の行、概算
+  const flat = JSON.stringify(draw({ context: CTX(86), breakdown: BREAKDOWN(true) }))
+  const at = (w: string) => flat.indexOf(w)
+  const barAt = flat.indexOf('█', flat.indexOf('▾ 内訳'))
+  expect(barAt).toBeGreaterThan(-1)
+  expect(barAt).toBeLessThan(at('Messages'))
+  expect(at('MCP tools')).toBeLessThan(at('自動 compact まで'))
+  expect(at('自動 compact まで')).toBeLessThan(at('概算'))
+  expect(at('概算')).toBeLessThan(at('band-exact'))
+})
+
+test('the stacked bar heads the open breakdown only; 32 cells wide, 16 when narrow', async () => {
+  const cells = (tree: Node) => find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).map(n => (n.children[0] as string).length)
+  const sum = (xs: number[]) => xs.reduce((x, y) => x + y, 0)
+  const ctxOnly = sum(cells(draw({ context: CTX(86) })))
+  const closed = sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(false) })))
+  expect(closed).toBe(ctxOnly)
+  expect(sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true) })))).toBe(ctxOnly + 32)
+  expect(sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true), columns: 30 })))).toBe(8 + 8)
 })
 
 test('detail closed hides the per-item rows', async () => {
@@ -178,17 +202,29 @@ test('steps: choices, heading with reason, confirm view, null shows nothing', as
   expect(labels({ steps: null })).toEqual([])
 })
 
-test('ESC sequences in goal, steps and names are stripped from every drawn string', async () => {
-  const dirty = (s: string) => `${ESC}[31m${s}${ESC}[0m`
-  const tree = draw({
-    goal: dirty('GOAL'),
-    model: dirty('M'),
-    git: { branch: dirty('br'), dirtyCount: 1 },
-    agents: { running: 1, rows: [{ ...ROWS[0], type: dirty('T'), description: dirty('D') }], open: true },
-    steps: { items: [dirty('S0'), dirty('S1')], reason: dirty('R'), confirming: null },
-  })
-  expect(JSON.stringify(tree)).not.toContain('\u001b')
-  expect(labelsOf(tree)).toEqual(expect.arrayContaining(['S0', 'S1']))
-  const conf = draw({ steps: { items: [dirty('S0')], reason: 'r', confirming: 0 } })
-  expect(JSON.stringify(conf)).not.toContain('\u001b')
+test('ESC sequences and bidi marks are stripped from every drawn string', async () => {
+  const bad = (s: string) => `[31m${s}[0m‮`
+  const check = (tree: Node, expected: string[]) => {
+    const all = [...textsOf(tree), ...labelsOf(tree)]
+    const joined = all.join('')
+    expect(joined).not.toContain('')
+    expect(joined).not.toContain('‮')
+    expect(JSON.stringify(tree)).not.toContain('\u001b')
+    expect(JSON.stringify(tree)).not.toContain('\u202e')
+    for (const w of expected) expect(all).toContain(w)
+  }
+  const base = {
+    goal: bad('goal'),
+    model: bad('model'),
+    git: { branch: bad('branch'), dirtyCount: 1 },
+    agents: { running: 1, rows: [{ ...ROWS[0], type: bad('atype'), description: bad('adesc') }], open: true },
+    breakdown: {
+      ...BREAKDOWN(true),
+      rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, percent: 1, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
+    },
+  }
+  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: null } }), [
+    'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
+  ])
+  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: 0 } }), ['s0', 's1', 'goal'])
 })

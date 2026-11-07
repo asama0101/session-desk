@@ -38,9 +38,14 @@ export type BandArgs = {
 const NARROW_COLUMNS = 40
 const BAR_WIDTH = 16
 const BAR_WIDTH_NARROW = 8
+const BREAKDOWN_BAR_WIDTH = 32
 
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
-const AGENT_MARK = { running: { mark: '●', color: 'blue' }, waiting: { mark: '○', color: 'gray' }, done: { mark: '✓', color: 'success' } } as const
+const AGENT_MARK = {
+  running: { mark: '●', color: 'blue', word: '実行中' },
+  waiting: { mark: '○', color: 'gray', word: '待機' },
+  done: { mark: '✓', color: 'success', word: '完了' },
+} as const
 
 export function renderBand(ui: Ui, a: BandArgs) {
   const { Box, Text, Button } = ui
@@ -50,10 +55,10 @@ export function renderBand(ui: Ui, a: BandArgs) {
 
     return level === 'normal' ? <Text>{`${percent}%`}</Text> : <Text color={level}>{`${percent}%`}</Text>
   }
-  const barWidth = a.columns !== undefined && a.columns < NARROW_COLUMNS ? BAR_WIDTH_NARROW : BAR_WIDTH
-  const bar = (parts: { id: CategoryId; tokens: number }[], percent: number) => (
+  const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
+  const bar = (parts: { id: CategoryId; tokens: number }[], percent: number, width: number) => (
     <Box>
-      {barCells(parts, percent, barWidth).map((c, i) => (
+      {barCells(parts, percent, width).map((c, i) => (
         <Text key={`${c.id}-${i}`} color={CATEGORY_COLORS[c.id]}>
           {(c.id === 'free' ? '░' : '█').repeat(c.cells)}
         </Text>
@@ -91,6 +96,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
             <Box key={`agent-${row.id}`} gap={2} flexWrap="wrap">
               <Text color={AGENT_MARK[row.state].color}>{AGENT_MARK[row.state].mark}</Text>
               <Text>{clean(row.type)}</Text>
+              <Text>{AGENT_MARK[row.state].word}</Text>
               <Text>{clean(row.description)}</Text>
               {row.elapsedMs !== null && <Text dimColor>{formatDuration(row.elapsedMs)}</Text>}
             </Box>
@@ -102,7 +108,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const contextLine = ctx !== null && (
     <Box gap={2} flexWrap="wrap">
       <Text dimColor>コンテキスト</Text>
-      {bar(ctx.parts, ctx.percent)}
+      {bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BAR_WIDTH)}
       {pct(ctx.percent)}
       <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>
     </Box>
@@ -116,6 +122,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       </Button>
       {bd.open && (
         <Box flexDirection="column">
+          {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BREAKDOWN_BAR_WIDTH)}
           {bd.rows.map(row => (
             <Box key={`bd-${row.id}`} flexDirection="column">
               <Box gap={2} flexWrap="wrap">
@@ -140,13 +147,19 @@ export function renderBand(ui: Ui, a: BandArgs) {
                 ))}
             </Box>
           ))}
+          {bd.compactIn !== null && (
+            <Text dimColor>
+              {bd.threshold === null
+                ? `自動 compact まで あと ${formatTokens(bd.compactIn)}`
+                : `自動 compact まで あと ${formatTokens(bd.compactIn)}（閾値 ${formatTokens(bd.threshold)}）`}
+            </Text>
+          )}
           <Box gap={2} flexWrap="wrap">
             <Text dimColor>概算</Text>
             <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
               <Text color="suggestion">正確に数える</Text>
             </Button>
           </Box>
-          {bd.compactIn !== null && <Text dimColor>{`自動 compact まで ${formatTokens(bd.compactIn)}`}</Text>}
         </Box>
       )}
     </Box>
