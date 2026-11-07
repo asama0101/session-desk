@@ -291,8 +291,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
             </Box>
           )}
           {shown.map(([key, , node], n) => (
-            <Box key={`sec-${key}`} flexDirection="column">
-              {(n > 0 || hasHead) && <Box marginY={1}>{thin}</Box>}
+            <Box key={`sec-${key}`} flexDirection="column" marginTop={n === 0 && hasHead ? 1 : 0}>
+              {n > 0 && <Box marginY={1}>{thin}</Box>}
               {node}
             </Box>
           ))}

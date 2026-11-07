@@ -220,14 +220,14 @@ test('the whole panel is one double-line frame headed Session + model; sections 
   expect(frames).toHaveLength(1)
   expect(frames[0].props.borderStyle).toBe('double')
   expect(textsOf(frames[0]).slice(0, 2)).toEqual(['Session', 'Opus 5.5'])
-  // 状態・コンテキスト・利用枠とブランチ・タブの各段の前に細い線、提案の前に二重線。
-  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(4)
+  // 見出しと最初の段のあいだに線は無い（1 行あけるだけ）。段と段のあいだに細い線、提案の前に二重線。
+  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(3)
   expect(textsOf(tree).filter(x => /^═+$/.test(x))).toHaveLength(1)
   const flat = JSON.stringify(tree)
   expect(flat.indexOf('═')).toBeGreaterThan(flat.indexOf('TABS'))
   expect(flat.indexOf('提案')).toBeGreaterThan(flat.indexOf('═'))
-  // 値のない段は出さない。コンテキストだけなら、見出しの下の線は 1 本。
-  expect(textsOf(draw({ context: CTX(50) })).filter(x => /^─+$/.test(x))).toHaveLength(1)
+  // 値のない段は出さない。コンテキストだけなら、線は無い。
+  expect(textsOf(draw({ context: CTX(50) })).filter(x => /^─+$/.test(x))).toHaveLength(0)
   // 何もなければ、枠も出ない。
   expect(find(draw(), n => n.props?.borderStyle !== undefined)).toHaveLength(0)
 })
@@ -236,13 +236,14 @@ test('every rule has one blank row above and below it', async () => {
   const steps = { items: ['a'], reason: 'R', recommended: null }
   const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), steps })
   const rules = find(tree, n => n.type === 'Box' && n.children.length === 1 && typeof (n.children[0] as Node).children?.[0] === 'string' && /^[─═]+$/.test((n.children[0] as Node).children[0] as string))
-  expect(rules).toHaveLength(3)
+  expect(rules).toHaveLength(2)
   for (const r of rules) expect(r.props.marginY).toBe(1)
 })
 
 test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
   const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
-  const gaps = find(tree, n => n.props?.marginTop === 1)
+  // 見出しの下の 1 行（段そのものの marginTop）は数えない。
+  const gaps = find(tree, n => n.props?.marginTop === 1 && n.props?.key !== 'sec-context')
   expect(gaps).toHaveLength(2)
   expect(textsOf(gaps[0])).toContain('Messages')
   expect(textsOf(gaps[1])).toContain('概算')
