@@ -86,4 +86,4 @@ claude --plugin-dir ./session-desk
 
 ## ライセンス
 
-未設定。
+MIT License。商用利用、改変、再配布ができる。コピーには、著作権表示と [LICENSE](LICENSE) の全文を付ける。
