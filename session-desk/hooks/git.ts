@@ -43,7 +43,7 @@ type Detail = { createdAt: string | null; firstCommitAt: string | null; pushedAt
 const BUDGET = 30
 const PR_LIMIT = 200
 const PR_FIELDS =
-  'number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  'number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url'
 
 // reject（起動できない・時間切れ）は、終了コード -1 の結果にそろえる。
 type Safe = RunResult & { rejected: boolean }

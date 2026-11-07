@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { buildRow } from './branch'
 import { formatAt, renderBranchTab } from './branch-view'
 import { textsOf } from './test-kit'
 
@@ -641,4 +642,50 @@ test('a GitHub-style remote URL is a link (https), and a local path or a URL wit
   expect(draw('/srv/git/x')).not.toContain('"type":"Link"')
   // Link が渡されないときも、URL は文字として出る。
   expect(JSON.stringify(renderBranchTab({ Box: 'Box', Text: 'Text', Button: 'Button' }, { snapshot: { problem: null, branches: [], remotes: [{ name: 'origin', url: 'github.com/a/b' }], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: null } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skippedKey: null, onSkip() {} }, busy: false }))).toContain('github.com/a/b')
+})
+
+// マージの段階では、PR のページへのリンクを、その行の右端に出す。
+const prRow = (over: Record<string, unknown>) =>
+  buildRow('feat/x', 'feat', true, {
+    dirty: false,
+    ahead: 2,
+    pushed: true,
+    createdAt: null,
+    firstCommitAt: null,
+    lastCommitAt: null,
+    pushedAt: null,
+    pr: { number: 19, state: 'OPEN', isDraft: false, reviewDecision: '', createdAt: '2026-11-07T12:00:00Z', mergedAt: null, headRefName: 'feat/x', headRefOid: 'abc', isCrossRepository: false, latestReviews: [], url: 'https://github.com/a/b/pull/19', ...over },
+    prKnown: true,
+    hasRemote: true,
+    originDiff: null,
+  } as any)
+
+test('merge: the stage row of a PR waiting to be merged carries a link to the PR page', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button', Link: 'Link' }
+  const draw = (row: any, Link = 'Link') =>
+    JSON.stringify(
+      renderBranchTab({ ...ui, Link } as any, {
+        snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: '00:00:00' } as any,
+        selected: null,
+        columns: 80,
+        offsetMin: 0,
+        onSelect() {},
+        more: { open: false, onToggle() {} },
+        onNext() {},
+        release: { skippedKey: null, onSkip() {} },
+        busy: false,
+      }),
+    )
+  const row = prRow({})
+  expect(row.now).toEqual({ id: 7, text: 'マージ待ち' })
+  const json = draw(row)
+  expect(json).toContain('"href":"https://github.com/a/b/pull/19"')
+  expect(json).toContain('PR #19  github.com/a/b/pull/19')
+  // レビューを待っている段階（マージの前）には、まだ出さない。
+  expect(draw(prRow({ reviewDecision: 'REVIEW_REQUIRED' }))).not.toContain('/pull/19')
+  // url がない・https でない・閉じた PR は、出さない。
+  expect(draw(prRow({ url: undefined }))).not.toContain('/pull/')
+  expect(draw(prRow({ url: 'javascript:alert(1)' }))).not.toContain('javascript')
+  // Link が渡されないときは、文字で出す。
+  expect(draw(row, undefined as any)).toContain('PR #19  github.com/a/b/pull/19')
 })
