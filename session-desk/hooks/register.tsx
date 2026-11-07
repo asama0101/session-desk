@@ -110,20 +110,27 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const target = gone || chosen === null ? current?.name : chosen
   const next = target === undefined ? collected : await enrich(runOf($), collected, target)
   // 削除の 2 段目の確認は、同じ質問のあいだだけ有効にする（状態が進んだら、1 段目に戻す）。
-  const asked = current === undefined ? null : actionOf(current)
-  if ((await read($, branchAct)).confirm !== (asked?.key ?? null)) {
-    await update($, branchAct, state => ({ ...state, confirm: null }))
-  }
+  // 質問は、PR を引き直したあとの現在ブランチ（next）から作る。
+  const nowCurrent = next.branches.find(b => b.isCurrent)
+  const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
+  await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
+  const before = await read($, branchSel)
   await update($, branchSel, () => name)
-  // ほかのブランチへ移ったら、削除の 2 段目の確認は 1 段目に戻す。
-  await update($, branchAct, state => ({ ...state, confirm: null }))
+  // ほかのブランチへ移ったら、削除の 2 段目の確認は 1 段目に戻す（同じブランチを押し直したときは戻さない）。
+  if (before !== name) {
+    await update($, branchAct, state => ({ ...state, confirm: null }))
+  }
   const snap = (await read($, snapshot)) as Snapshot | null
   if (snap !== null) {
     const next = await enrich(runOf($), snap, name)
+    // 取得のあいだに別のブランチが選ばれていたら、古い結果は書かない（選び直した側が取る）。
+    if ((await read($, branchSel)) !== name) {
+      return
+    }
     let replaced = false
     await update($, snapshot, cur => {
       const result = replaceIfSame(cur as Snapshot | null, snap, next)
@@ -157,6 +164,8 @@ async function answerAction($: any, action: Action, step: Step) {
     // 送れなかったときは、確認が消えただけで終わらないように、知らせる。
     $.prompt.submit({ text: action.prompt }).catch(() => {
       void $.ui.toast('依頼を送れませんでした')
+      // 押し直せるように、答え済みの記録を外す。
+      void update($, branchAct, state => ({ ...state, dismissed: state.dismissed.filter(k => k !== action.key) }))
     })
   }
 }
@@ -164,8 +173,8 @@ async function answerAction($: any, action: Action, step: Step) {
 async function selectTab($: any, desk: Desk, id: Tab) {
   await update($, tab, () => id)
   if (id === 'branch') {
-    // gh が後退間隔の途中なら、タブを押しても gh は読み直さない（git は読み直す）。
-    desk.refresher?.request(Date.now() >= desk.ghNextAt)
+    // gh が失敗して間隔が延びている間は、タブを押しても gh は読み直さない（git は読み直す）。
+    desk.refresher?.request(desk.ghFailures === 0 || Date.now() >= desk.ghNextAt)
   }
 }
 

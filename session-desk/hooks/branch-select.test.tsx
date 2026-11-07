@@ -43,7 +43,7 @@ const CREATED = '2026-11-05T09:00:00+09:00'
 // refs を後から差し替えられるエンジン。reflog と log の答えも持つ。
 function engine(on: any) {
   const calls: string[] = []
-  const cfg = { refs: REFS_ALL }
+  const cfg = { refs: REFS_ALL, head: 'refs/heads/feat/a\n', listPrs: '[]', headPrs: '[]' }
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
@@ -59,14 +59,16 @@ function engine(on: any) {
     let exitCode = 0
     if (key === 'rev-parse --git-dir') stdout = '.git\n'
     else if (key === 'symbolic-ref -q refs/remotes/origin/HEAD') stdout = 'refs/remotes/origin/main\n'
-    else if (key === 'symbolic-ref -q HEAD') stdout = 'refs/heads/feat/a\n'
+    else if (key === 'symbolic-ref -q HEAD') stdout = cfg.head
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) stdout = cfg.refs
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) {
       stdout = 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t2 0\nrefs/heads/main\t0 0\n'
     } else if (key.startsWith('rev-list --count')) stdout = '0\n'
     else if (key === 'reflog show --date=iso-strict --format=%gd%x09%gs refs/heads/feat/a') {
       stdout = `feat/a@{${CREATED}}\tbranch: Created from main\n`
-    } else if (key.startsWith('gh pr list')) stdout = '[]'
+    } else if (key.startsWith('rev-parse --verify refs/heads/')) {
+      stdout = ({ 'docs/b': 'B1', 'feat/a': 'A1', main: 'M1' } as Record<string, string>)[key.slice('rev-parse --verify refs/heads/'.length)] + '\n'
+    } else if (key.startsWith('gh pr list')) stdout = argv.includes('--head') ? cfg.headPrs : cfg.listPrs
     else if (key !== 'status --porcelain=v1 -z' && !key.startsWith('reflog') && !key.startsWith('log ')) exitCode = 1
 
     return { value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -119,5 +121,38 @@ test('when the chosen branch disappears, the screen goes back to the current bra
   await settle(e.calls)
   expect(await ui.find({ key: 'branch-docs/b' })).toBeUndefined()
   expect(await texts(ui)).toContain('● push  次: push')
+  await ui.unmount()
+})
+
+const MERGED_DOCS_B = {
+  number: 7,
+  state: 'MERGED',
+  isDraft: false,
+  reviewDecision: '',
+  createdAt: '2026-11-03T00:00:00Z',
+  mergedAt: '2026-11-03T01:00:00Z',
+  headRefName: 'docs/b',
+  headRefOid: 'B1',
+  isCrossRepository: false,
+  latestReviews: [],
+}
+
+test('a half-finished delete confirmation survives refreshes even when the PR list hit its limit', async ($, on) => {
+  const e = engine(on)
+  e.cfg.head = 'refs/heads/docs/b\n'
+  e.cfg.listPrs = JSON.stringify(
+    Array.from({ length: 200 }, (_, i) => ({ ...MERGED_DOCS_B, number: 100 + i, headRefName: `other${i}`, state: 'CLOSED' })),
+  )
+  e.cfg.headPrs = JSON.stringify([MERGED_DOCS_B])
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('削除しますか？')
+  const yes = await ui.find({ type: 'Button', text: 'はい' })
+  await ui.press({ key: yes.key })
+  await flush()
+  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await settle(e.calls)
+  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
   await ui.unmount()
 })

@@ -202,3 +202,17 @@ test('pressing the ブランチ tab again does not call gh while it is backing o
   expect(git(e.calls)).toBeGreaterThan(gitBefore)
   await ui.unmount()
 })
+
+test('pressing the ブランチ tab again reads gh again when gh last succeeded', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'tab-branch' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(1)
+  await ui.press({ key: 'tab-history' })
+  await ui.press({ key: 'tab-branch' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(2)
+  await ui.unmount()
+})

@@ -513,3 +513,15 @@ test('yes/no: the second delete confirmation can wrap in a narrow panel', async 
   expect(JSON.stringify(await ui.drawn())).toContain('"flexWrap":"wrap"')
   await ui.unmount()
 })
+
+test('yes/no: after a failed send the question comes back, so it can be answered again', async ($, on) => {
+  const e = engine(on, { submitFails: true })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  await flush()
+  expect(e.toasts).toEqual(['依頼を送れませんでした'])
+  expect(await hasText(ui, 'はい')).toBe(true)
+  await ui.unmount()
+})
