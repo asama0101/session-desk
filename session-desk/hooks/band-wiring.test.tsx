@@ -529,7 +529,7 @@ test('rows are sorted by tokens, buffer and unknown names fold into その他, �
   await settle()
   await settle()
   const t = await draw(ui)
-  const names = ['メッセージ', 'MCP ツール', 'その他', 'システムプロンプト', '空き']
+  const names = ['メッセージ', 'MCP', 'その他', 'システム', '空き']
   const at = names.map(n => t.indexOf(n))
   expect(at.every(i => i >= 0)).toBe(true)
   expect([...at].sort((a, b) => a - b)).toEqual(at)

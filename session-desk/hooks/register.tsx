@@ -345,10 +345,10 @@ function partsOf(breakdown: { categories: { name: string; kind: string; tokens: 
 
 const CATEGORY_NAMES: Record<CategoryId, string> = {
   messages: 'メッセージ',
-  mcp: 'MCP ツール',
-  systemTools: 'システムツール',
-  systemPrompt: 'システムプロンプト',
-  memory: 'メモリファイル',
+  mcp: 'MCP',
+  systemTools: 'ツール',
+  systemPrompt: 'システム',
+  memory: 'メモリ',
   skills: 'スキル',
   other: 'その他',
   free: '空き',
