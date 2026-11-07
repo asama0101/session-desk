@@ -156,3 +156,210 @@ test('the band is drawn above every tab', async ($, on) => {
   }
   await ui.unmount()
 })
+
+// ---- Task 8: モデル・コンテキスト・上限・サブエージェント ----
+
+const ZERO_USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' }
+const cat = (name: string, kind: string, tokens: number) => ({ name, kind, tokens, color: 'x', isDeferred: kind === 'deferred' })
+
+// usage / model / agent.list の差し替え。calls に usage の引数を残す。
+function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boolean; throwList?: boolean } = {}) {
+  const state = { calls: [] as any[], list: opts.list ?? [] }
+  on('session.usage', (_: any, e: any) => {
+    state.calls.push(e)
+    if (opts.throwUsage) throw new Error('usage failed')
+
+    return { value: opts.usage ?? { startedAt: 0, context: { window: 200000, tokens: 116000, percent: 58 }, rateLimits: [] } }
+  })
+  on('session.model', () => ({ value: 'claude-test-model' }))
+  on('agent.list', () => {
+    if (opts.throwList) throw new Error('no session is bound')
+
+    return { value: state.list }
+  })
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
+
+  return state
+}
+
+// 描かれた木から、Text の color を、文字ごとに集める。
+function colorsOf(tree: any, out: { text: string; color?: string }[] = []) {
+  if (tree?.type === 'Text' && typeof tree.children?.[0] === 'string') out.push({ text: tree.children[0], color: tree.props?.color })
+  for (const c of tree?.children ?? []) if (typeof c === 'object' && c !== null) colorsOf(c, out)
+
+  return out
+}
+
+const agent = (status: string) => ({ id: 'a1', type: 'Explore', description: 'look around', status })
+
+test('turn.complete brings the context percent and the model to the pane, no timer needed', async ($, on) => {
+  engine(on)
+  const data = fakeData(on)
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await draw(ui)).not.toContain('claude-test-model')
+  await $.turn.complete(done({ usage: ZERO_USAGE }))
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('claude-test-model')
+  expect(t).toContain('58%')
+  expect(t).toContain('116k / 200k')
+  expect(data.calls.length).toBeGreaterThan(0)
+  expect(data.calls.every(c => c.breakdown === 'summary')).toBe(true)
+  await ui.unmount()
+})
+
+test('turn.start and tool.call fetch too', async ($, on) => {
+  engine(on)
+  const data = fakeData(on)
+  await start($)
+  await settle()
+  const before = data.calls.length
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await settle()
+  const afterStart = data.calls.length
+  expect(afterStart).toBeGreaterThan(before)
+  await $.tool.call({ tool: 'Grep', pattern: 'x' })
+  await settle()
+  expect(data.calls.length).toBeGreaterThan(afterStart)
+})
+
+test('empty rateLimits hides the limits but keeps the context', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('58%')
+  expect(t).not.toContain('5時間枠')
+  expect(t).not.toContain('7日枠')
+  await ui.unmount()
+})
+
+test('a throwing usage leaves the run row, the git row and the model', async ($, on) => {
+  engine(on)
+  fakeData(on, { throwUsage: true })
+  await start($)
+  await settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('実行中')
+  expect(t).toContain('feat-x')
+  expect(t).toContain('claude-test-model')
+  expect(t.some(x => x.includes(' / '))).toBe(false)
+  await ui.unmount()
+})
+
+test('five_hour and seven_day show two limits', async ($, on) => {
+  engine(on)
+  const future = new Date(Date.now() + 3 * 3600_000 + 60_000).toISOString()
+  fakeData(on, {
+    usage: {
+      startedAt: 0,
+      context: { window: 200000 },
+      rateLimits: [
+        { kind: 'five_hour', percentUsed: 36, resetsAt: future },
+        { kind: 'seven_day', percentUsed: 97 },
+      ],
+    },
+  })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('5時間枠')
+  expect(t).toContain('7日枠')
+  expect(t).toContain('36%')
+  expect(t).toContain('97%')
+  expect(t).toContain('3h 0m')
+  const c = colorsOf(await ui.drawn())
+  expect(c.find(x => x.text === '97%')?.color).toBe('error')
+  expect(c.find(x => x.text === '36%')?.color).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the context bar is split by the breakdown categories colours', async ($, on) => {
+  engine(on)
+  fakeData(on, {
+    usage: {
+      startedAt: 0,
+      context: {
+        window: 200000,
+        tokens: 100000,
+        percent: 50,
+        breakdown: {
+          categories: [cat('Messages', 'used', 60000), cat('System prompt', 'used', 30000), cat('Free space', 'free', 100000), cat('Autocompact buffer', 'buffer', 10000)],
+          rawMaxTokens: 200000,
+          autoCompactThreshold: 160000,
+          isAutoCompactEnabled: true,
+          mcpTools: [{ name: 't', serverName: 's', tokens: 5, isLoaded: true }],
+          memoryFiles: [{ path: 'CLAUDE.md', type: 'User', tokens: 7 }],
+          skills: { totalSkills: 1, includedSkills: 1, tokens: 3, skillFrontmatter: [{ name: 'sk', source: 'x', tokens: 3 }] },
+        },
+      },
+      rateLimits: [],
+    },
+  })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const colors = colorsOf(await ui.drawn())
+    .filter(x => /^█+$/.test(x.text))
+    .map(x => x.color)
+  expect(colors).toContain('#61afef')
+  expect(colors).toContain('#7ec699')
+  expect(colors).not.toContain('#55555a')
+  await ui.unmount()
+})
+
+test('a spawned running agent opens the list; closing keeps it closed on the next fetch; 0 agents shows nothing', async ($, on) => {
+  engine(on)
+  const data = fakeData(on)
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  expect(await draw(ui)).not.toContain('サブエージェント')
+  data.list = [agent('running')]
+  await $.agent.spawn({ prompt: 'p' })
+  await $.turn.start({ text: 'hi', turnId: 't2' })
+  await settle()
+  let t = await draw(ui)
+  expect(t).toContain('サブエージェント')
+  expect(t).toContain('Explore')
+  expect(t).toContain('look around')
+  await ui.press({ key: 'band-agents' })
+  await settle()
+  t = await draw(ui)
+  expect(t).toContain('サブエージェント')
+  expect(t).not.toContain('look around')
+  await $.turn.complete(done())
+  await settle()
+  expect(await draw(ui)).not.toContain('look around')
+  data.list = []
+  await $.turn.complete(done())
+  await settle()
+  t = await draw(ui)
+  expect(t).not.toContain('サブエージェント')
+  expect(t).not.toContain('Explore')
+  await ui.unmount()
+})
+
+test('agent.list throwing hides the agents and nothing else breaks', async ($, on) => {
+  engine(on)
+  fakeData(on, { throwList: true })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).not.toContain('サブエージェント')
+  expect(t).toContain('58%')
+  await ui.unmount()
+})

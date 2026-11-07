@@ -21,6 +21,27 @@ declare module 'claude-code' {
         confirming: number | null
         turnId: string | null
       }
+      usageView: {
+        model: string | null
+        context: { percent: number; tokens: number; window: number } | null
+        rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
+        breakdown: {
+          categories: { name: string; kind: string; tokens: number }[]
+          rawMaxTokens: number
+          autoCompactThreshold?: number
+          isAutoCompactEnabled: boolean
+          mcpTools: { name: string; tokens: number }[]
+          memoryFiles: { name: string; tokens: number }[]
+          skills: { name: string; tokens: number }[]
+        } | null
+      }
+      agentsView: {
+        running: number
+        rows: { id: string; type: string; description: string; state: 'running' | 'waiting' | 'done'; elapsedMs: number | null }[]
+        open: boolean
+        startedAt: Record<string, number>
+      }
+      bandUi: { breakdown: boolean; exact: boolean; agentsClosedByUser: boolean; detail: string[] }
       branchSel: string | null
       branchAct: { dismissed: string[]; confirm: string | null }
     }

@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, removeTool, startTurn, toolLabel } from './band'
+import { addTool, classifyCategory, limitRows, nextAgentsOpen, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
@@ -44,6 +45,31 @@ const band = atom(
     confirming: null as number | null,
     turnId: null as string | null,
   },
+)
+const usageView = atom(
+  { plugin: 'session-desk', key: 'usageView' } as const,
+  {
+    model: null as string | null,
+    context: null as { percent: number; tokens: number; window: number } | null,
+    rateLimits: [] as { kind: string; percentUsed: number; resetsAt?: string }[],
+    breakdown: null as {
+      categories: { name: string; kind: string; tokens: number }[]
+      rawMaxTokens: number
+      autoCompactThreshold?: number
+      isAutoCompactEnabled: boolean
+      mcpTools: { name: string; tokens: number }[]
+      memoryFiles: { name: string; tokens: number }[]
+      skills: { name: string; tokens: number }[]
+    } | null,
+  },
+)
+const agentsView = atom(
+  { plugin: 'session-desk', key: 'agentsView' } as const,
+  { running: 0, rows: [] as AgentRow[], open: false, startedAt: {} as Record<string, number> },
+)
+const bandUi = atom(
+  { plugin: 'session-desk', key: 'bandUi' } as const,
+  { breakdown: false, exact: false, agentsClosedByUser: false, detail: [] as string[] },
 )
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
 let toolSeq = 0
@@ -147,6 +173,90 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   await refreshBand($, cwd)
 }
 
+// モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。
+// 「正確に数える」（exact）は後続のタスクで足すので、今は常に概算（summary）で読む。
+async function fetchBandData($: any, _exact: boolean): Promise<void> {
+  try {
+    let usage: any = null
+    try {
+      usage = await $.session.usage({ breakdown: 'summary' })
+    } catch {
+      // 取れなければ、コンテキストと上限は出さない。
+    }
+    let model: string | null = null
+    try {
+      const name = await $.session.model()
+      model = typeof name === 'string' && name !== '' ? name : null
+    } catch {
+      // モデル名は出さない。
+    }
+    let list: { id: string; type: string; description: string; status: string }[] | null = null
+    try {
+      const got = await $.agent.list()
+      list = Array.isArray(got) ? got : null
+    } catch {
+      // セッションに結び付いていないときは、一覧を出さない。
+    }
+
+    const ctx = usage?.context
+    const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
+    const window = typeof ctx?.window === 'number' ? ctx.window : 0
+    const b = ctx?.breakdown
+    await update($, usageView, () => ({
+      model,
+      context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : Math.round((percent * window) / 100), window },
+      rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
+      breakdown:
+        b === undefined || b === null || !Array.isArray(b.categories)
+          ? null
+          : {
+              categories: b.categories.map((c: any) => ({ name: String(c.name), kind: String(c.kind), tokens: Number(c.tokens) || 0 })),
+              rawMaxTokens: b.rawMaxTokens,
+              autoCompactThreshold: b.autoCompactThreshold,
+              isAutoCompactEnabled: b.isAutoCompactEnabled === true,
+              // 1 件ずつの名前: MCP ツールは「サーバー / ツール」、メモリファイルは path、スキルは name。
+              mcpTools: (b.mcpTools ?? []).map((t: any) => ({ name: `${t.serverName} / ${t.name}`, tokens: Number(t.tokens) || 0 })),
+              memoryFiles: (b.memoryFiles ?? []).map((f: any) => ({ name: String(f.path), tokens: Number(f.tokens) || 0 })),
+              skills: (b.skills?.skillFrontmatter ?? []).map((k: any) => ({ name: String(k.name), tokens: Number(k.tokens) || 0 })),
+            },
+    }))
+
+    const prev = await read($, agentsView)
+    const ui = await read($, bandUi)
+    const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(prev.startedAt)), Date.now())
+    const opened = nextAgentsOpen({ running: prev.running, closedByUser: ui.agentsClosedByUser }, summary.running)
+    await update($, agentsView, cur => ({ ...cur, running: summary.running, rows: summary.rows, open: opened.open }))
+    await update($, bandUi, cur => ({ ...cur, agentsClosedByUser: opened.closedByUser }))
+  } catch {
+    // atom を更新できなくても、フックを失敗させない。
+  }
+}
+
+// 取得は待たない。フックの結果に影響させない。
+function refetch($: any) {
+  void fetchBandData($, false).catch(() => {})
+}
+
+// サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
+async function toggleAgents($: any) {
+  const cur = await read($, agentsView)
+  await update($, agentsView, v => ({ ...v, open: !cur.open }))
+  await update($, bandUi, v => ({ ...v, agentsClosedByUser: cur.open }))
+}
+
+// 内訳のカテゴリを、帯の色分けの区分ごとに合計する（空きは除く）。
+function partsOf(breakdown: { categories: { name: string; kind: string; tokens: number }[] } | null): { id: CategoryId; tokens: number }[] {
+  const sums = new Map<CategoryId, number>()
+  for (const c of breakdown?.categories ?? []) {
+    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
+    if (id !== 'free') {
+      sums.set(id, (sums.get(id) ?? 0) + c.tokens)
+    }
+  }
+
+  return [...sums].map(([id, tokens]) => ({ id, tokens }))
+}
+
 async function selectBranch($: any, desk: Desk, name: string) {
   const before = await read($, branchSel)
   await update($, branchSel, () => name)
@@ -219,6 +329,7 @@ export const register: Register = on => {
     if (shown) {
       await update($, band, b => ({ ...b, run: addTool(b.run, id, tool) }))
     }
+    refetch($)
     const refreshes = ['Bash', 'Edit', 'Write'].includes(tool)
     const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
 
@@ -239,8 +350,24 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
     }
+    refetch($)
 
     return next(e)
+  })
+
+  on('agent.spawn', async ($, e, next) => {
+    const out = await next(e)
+    const agentId = (out as { agentId?: string }).agentId
+    if (agentId !== undefined) {
+      try {
+        await update($, agentsView, v => ({ ...v, startedAt: { ...v.startedAt, [agentId]: Date.now() } }))
+      } catch {
+        // 開始時刻を残せなくても、経過時間が出ないだけ。
+      }
+    }
+    refetch($)
+
+    return out
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -249,6 +376,7 @@ export const register: Register = on => {
       const stop = e.reason === 'answer' ? null : e.reason
       await update($, band, b => ({ ...b, state: 'stopped', lastTurn: { durationMs: e.durationMs, tokens }, stop }))
     }
+    refetch($)
 
     return next(e)
   })
@@ -275,6 +403,7 @@ export const register: Register = on => {
     try {
       desk.timer = $.clock.every(10_000, () => {
         desk.refresher?.request(Date.now() >= desk.ghNextAt)
+        refetch($)
       })
     } catch {
       // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
@@ -308,6 +437,8 @@ export const register: Register = on => {
     const { Box, Button, Input, Text } = $.ui.resolve(e)
     const current = await read($, tab)
     const b = await read($, band)
+    const u = await read($, usageView)
+    const ag = await read($, agentsView)
 
     let body
     if (current === 'history') {
@@ -455,14 +586,14 @@ export const register: Register = on => {
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
           lastTurn: b.lastTurn,
           stop: b.stop,
-          agents: { running: 0, rows: [], open: false },
-          model: null,
-          context: null,
+          agents: { running: ag.running, rows: ag.rows, open: ag.open },
+          model: u.model,
+          context: u.context === null ? null : { ...u.context, parts: partsOf(u.breakdown) },
           breakdown: null,
-          limits: [],
+          limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
           steps: null,
-          on: { toggleBreakdown() {}, toggleAgents() {}, exact() {}, toggleDetail() {}, pick() {}, confirm() {}, cancel() {} },
+          on: { toggleBreakdown() {}, toggleAgents: () => void toggleAgents($), exact() {}, toggleDetail() {}, pick() {}, confirm() {}, cancel() {} },
           columns: e.props.bodyColumns,
         })}
         {body}
