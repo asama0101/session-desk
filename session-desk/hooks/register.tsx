@@ -23,8 +23,8 @@ const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 
 const TABS: readonly { id: Tab; label: string }[] = [
-  { id: 'history', label: '履歴' },
   { id: 'quick', label: '定型文' },
+  { id: 'history', label: '履歴' },
 ]
 
 // 定型文を変えたら、atom（画面）とストア（次のセッション）の両方に書く。`$` を受け取る関数は、トップレベルに置く。
@@ -155,7 +155,7 @@ export const register: Register = on => {
                     label="▲ 上へ"
                     onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
                   >
-                    <Text color="suggestion">▲ 上へ</Text>
+                    <Text dimColor>▲ 上へ</Text>
                   </Button>
                 )}
                 {i < phrases.length - 1 && (
@@ -165,7 +165,7 @@ export const register: Register = on => {
                     label="▼ 下へ"
                     onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
                   >
-                    <Text color="suggestion">▼ 下へ</Text>
+                    <Text dimColor>▼ 下へ</Text>
                   </Button>
                 )}
                 <Button
