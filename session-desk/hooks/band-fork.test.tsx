@@ -198,24 +198,38 @@ test('prompt.submit clears the steps', async ($, on) => {
   await start($)
   const ui = await mount($)
   await turn($, 't1')
+  expect(await labels(ui)).toContain('案 A で進めて')
   await send($, '別の依頼')
   expect(await labels(ui)).not.toContain('案 A で進めて')
   await ui.unmount()
 })
 
-test('pressing a step sends its exact text once and clears the steps; a double press still sends once', async ($, on) => {
+test('pressing a step sends its exact text once and clears the steps', async ($, on) => {
   const s = engine(on)
   await start($)
   const ui = await mount($)
   await turn($)
   await ui.press({ key: 'band-step-1' })
-  // 二度目の押下: 選択肢はもう消えていて、何も送らない。
-  await ui.press({ key: 'band-step-1' }).catch(() => {})
   await settle()
   expect(s.submitted).toEqual(['案 B で進めて'])
   expect(await labels(ui)).not.toContain('案 A で進めて')
-  expect(s.submitted).toEqual(['案 B で進めて'])
   await ui.unmount()
+})
+
+// 同じ Pane は 1 つの面に 1 つしか置けないので、2 つの面に置いて、両方の押下を待たずに同時に走らせる。
+// 2 つの書き込みが競り、負けた側の update がやり直されても、送るのは 1 回だけ。
+test('two presses at the same time send once', async ($, on) => {
+  const s = engine(on)
+  await start($)
+  const a = await mount($)
+  const b = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await turn($)
+  const pressed = await Promise.allSettled([a.press({ key: 'band-step-1' }), b.press({ key: 'band-step-1' })])
+  await settle()
+  expect(pressed.map(p => p.status)).toEqual(['fulfilled', 'fulfilled'])
+  expect(s.submitted).toEqual(['案 B で進めて'])
+  await a.unmount()
+  await b.unmount()
 })
 
 test('a rejected submit shows a toast and brings the steps back', async ($, on) => {
@@ -295,6 +309,38 @@ test('while our fork runs, turn.start / turn.complete / tool.call leave the band
   await $.turn.start({ text: 'つぎ', turnId: 't2' })
   t = await draw(ui)
   expect(t).toContain('実行中')
+  await ui.unmount()
+})
+
+test('a prompt from any origin during our fork lets the next turn through, and the late result is thrown away', async ($, on) => {
+  const s = engine(on)
+  s.forks.push({ hold: true })
+  await start($)
+  const ui = await mount($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete(done({ turnId: 't1' }))
+  await settle()
+  await $.prompt.submit({ text: 'タスクの通知', origin: { kind: 'task-notification' } })
+  await $.turn.start({ text: 'タスクの通知', turnId: 't2' })
+  expect(await draw(ui)).toContain('実行中')
+  s.release(reply(GOOD))
+  await settle()
+  expect(await labels(ui)).not.toContain('案 A で進めて')
+  await ui.unmount()
+})
+
+test('a fork result that lands between a prompt and its turn.start does not bring the steps back', async ($, on) => {
+  const s = engine(on)
+  s.forks.push({ hold: true })
+  await start($)
+  const ui = await mount($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete(done({ turnId: 't1' }))
+  await settle()
+  await send($, 'つぎ')
+  s.release(reply(GOOD))
+  await settle()
+  expect(await labels(ui)).not.toContain('案 A で進めて')
   await ui.unmount()
 })
 

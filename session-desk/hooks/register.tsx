@@ -74,8 +74,8 @@ const bandUi = atom(
 )
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
 let toolSeq = 0
-// 自分の fork の印。id は走っている fork の番号（なければ null）。userSent は、fork の開始後に人の送信があったか。
-// fork の最中の turn.start・turn.complete・tool.call は、人の送信のあとの turn.start までは帯に反映しない。session.start で戻す。
+// 自分の fork の印。id は走っている fork の番号（なければ null）。userSent は、fork の開始後に prompt.submit があったか（送信元は問わない）。
+// fork の最中の turn.start・turn.complete・tool.call は、prompt.submit のあとの turn.start までは帯に反映しない。session.start で戻す。
 const forkGuard = { seq: 0, id: null as number | null, userSent: false }
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
@@ -408,10 +408,14 @@ async function askFork($: any, turnId: string): Promise<void> {
   forkGuard.userSent = false
   try {
     const prevGoal = (await read($, band)).goal
-    // effort は型に無いので、変数に入れてから渡す。
+    // 費用を抑えるため、effort は low にする。
     const req = { prompt: forkPrompt(prevGoal), effort: 'low' as const }
     const result = await $.model.fork(req)
     if (result?.isAnswered !== true) {
+      return
+    }
+    // 結果が出る前に次のプロンプトが送られていたら、消した選択肢を戻さないように捨てる。
+    if (forkGuard.id === id && forkGuard.userSent) {
       return
     }
     const got = parseForkReply(String(result.text ?? ''), prevGoal)
@@ -430,6 +434,8 @@ async function askFork($: any, turnId: string): Promise<void> {
 async function pickStep($: any, i: number, confirmed: boolean) {
   let sent: { text: string; steps: string[]; turnId: string | null } | null = null
   await update($, band, b => {
+    // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
+    sent = null
     const text = b.steps[i]
     if (text === undefined || (confirmed && b.confirming !== i)) {
       return b
@@ -516,7 +522,7 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (forkGuard.id !== null) {
-      // 人の送信のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
+      // prompt.submit のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
       if (!forkGuard.userSent || e.agentId !== undefined) {
         return next(e)
       }
@@ -617,8 +623,11 @@ export const register: Register = on => {
       }
       await update($, history, list => [...list, e.text])
     }
+    // 自分の fork は prompt.submit を通らないので、fork の最中の送信は、どの送信元でも本物のターンの始まり。
+    if (forkGuard.id !== null && (e as { agentId?: unknown }).agentId === undefined) {
+      forkGuard.userSent = true
+    }
     if (byUser) {
-      forkGuard.userSent = forkGuard.id !== null
       try {
         await update($, band, b => ({ ...b, steps: [], confirming: null }))
       } catch {
