@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyDetail, collect, detailOf, enrich, pickBudget, replaceIfSame, requeryPr } from './git'
+import { applyDetail, collect, collectLight, detailOf, enrich, pickBudget, replaceIfSame, requeryPr } from './git'
 import type { Run, Snapshot } from './git'
 
 type Reply = { exitCode?: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | 'reject'
@@ -426,4 +426,23 @@ test('requeryPr keeps a merge-commit merged PR for a branch with no commits ahea
     'merge-base --is-ancestor NEWER refs/remotes/origin/main': { exitCode: 0 },
   })
   expect((await requeryPr(f.run, 'feat/a', 'A1', 0, 'refs/remotes/origin/main')).pr?.state).toBe('MERGED')
+})
+
+test('collectLight reads only symbolic-ref HEAD and status, and counts the changed paths', async () => {
+  const f = fake({ status: ok(' M a ') })
+  expect(await collectLight(f.run)).toEqual({ isRepo: true, branch: 'feat/a', dirtyCount: 1 })
+  expect(f.calls.sort()).toEqual(['status --porcelain=v1 -z', 'symbolic-ref -q HEAD'])
+  expect(f.violations).toEqual([])
+})
+
+test('collectLight: a detached HEAD has no branch but is still a repository', async () => {
+  const f = fake({ 'symbolic-ref -q HEAD': { exitCode: 1 } })
+  expect(await collectLight(f.run)).toEqual({ isRepo: true, branch: null, dirtyCount: 0 })
+})
+
+test('collectLight: when status fails it is not a repository', async () => {
+  for (const status of [{ exitCode: 128 }, 'reject' as const]) {
+    const f = fake({ status })
+    expect(await collectLight(f.run)).toEqual({ isRepo: false, branch: null, dirtyCount: null })
+  }
 })

@@ -9,6 +9,7 @@ declare module 'claude-code' {
       selected: number | null
       // 形は hooks/git.ts の Snapshot。契約は自己完結（import 不可）でなければならないので unknown とし、使う側で型を付ける。
       snapshot: unknown
+      bandGit: { branch: string | null; dirtyCount: number | null } | null
       branchSel: string | null
       branchAct: { dismissed: string[]; confirm: string | null }
     }

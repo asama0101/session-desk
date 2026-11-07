@@ -5,7 +5,7 @@ import type { Tab } from '../types'
 import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
-import { collect, enrich, replaceIfSame } from './git'
+import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
   DEFAULT_QUICK,
@@ -28,6 +28,7 @@ const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAUL
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
+const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
 const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
@@ -66,13 +67,23 @@ type Desk = {
 
 const runOf = ($: any): Run => argv => $.process.run(argv, { timeoutMs: 15000, env: { LC_ALL: 'C' } })
 
-// ブランチタブが表示中のときだけ、git（と、withGh なら gh）を読んで snapshot を更新する。
-async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
-  if ((await read($, tab)) !== 'git') {
-    return
+// 今のブランチと未 commit の数を読んで bandGit に書く。読んでいるあいだに作業フォルダが変わったら捨てる。
+async function refreshBand($: any, cwd: string): Promise<void> {
+  const light = await collectLight(runOf($))
+  if ((await $.session.cwd()) === cwd) {
+    await update($, bandGit, () => (light.isRepo ? { branch: light.branch, dirtyCount: light.dirtyCount } : null))
   }
+}
+
+// パネルが表示中のときだけ読む。Git タブ以外では、今のブランチと未 commit の数だけ。Git タブでは、git（と、withGh なら gh）を読んで snapshot も更新する。
+async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
   if (!panes.some(pane => pane.id === PANE && pane.isPlaced)) {
+    return
+  }
+  if ((await read($, tab)) !== 'git') {
+    await refreshBand($, await $.session.cwd())
+
     return
   }
   const cwd: string = await $.session.cwd()
@@ -115,6 +126,7 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
   await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
+  await refreshBand($, cwd)
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
@@ -217,6 +229,7 @@ export const register: Register = on => {
     } catch {
       // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
     }
+    desk.refresher.request(false)
     void $.ui.open({ id: PANE, title: 'Session Desk' }).catch(() => {})
     try {
       const saved = parseQuick(await $.store.get(STORE_KEY))
