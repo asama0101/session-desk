@@ -24,11 +24,12 @@
   <line x1="424" y1="44" x2="936" y2="44" stroke="#3c3c3c"/>
 
   <!-- 帯 -->
-  <rect x="418" y="52" width="524" height="286" rx="6" fill="none" stroke="#3c3c3c"/>
+  <rect x="418" y="52" width="524" height="306" rx="6" fill="none" stroke="#3c3c3c"/>
   <text x="430" y="76" fill="#858585">ゴール</text>
   <text x="500" y="76" fill="#d4d4d4">帯と選択肢を足す</text>
   <text x="430" y="100" fill="#858585">停止中</text>
-  <text x="500" y="100" fill="#d4d4d4">直近 1m42s・18k tokens</text>
+  <text x="500" y="100" fill="#d4d4d4">直近 1m42s</text>
+  <text x="604" y="100" fill="#d4d4d4">18k tokens</text>
   <text x="430" y="124" fill="#d4d4d4" font-weight="bold">サブエージェント 1</text>
   <text x="640" y="124" fill="#858585">▴ 閉じる</text>
   <text x="442" y="146" fill="#61afef">●</text>
@@ -54,26 +55,27 @@
   <text x="642" y="242" fill="#7ec699">■</text><text x="662" y="242" fill="#d4d4d4">システムプロンプト  8k</text>
   <text x="442" y="262" fill="#e5c07b">■</text><text x="462" y="262" fill="#d4d4d4">メモリファイル  4k</text>
   <text x="642" y="262" fill="#d19a66">■</text><text x="662" y="262" fill="#d4d4d4">スキル  3k</text>
-  <text x="442" y="282" fill="#858585">自動 compact まで あと 40k　概算</text>
-  <text x="750" y="282" fill="#b1b9f9">正確に数える</text>
+  <text x="442" y="282" fill="#858585">自動 compact まで あと 40k（閾値 137k）</text>
+  <text x="442" y="302" fill="#858585">概算</text>
+  <text x="492" y="302" fill="#b1b9f9">正確に数える</text>
 
-  <text x="430" y="306" fill="#d4d4d4">5時間枠 32% 残り 3h 10m</text>
-  <text x="700" y="306" fill="#d4d4d4">7日枠 11%</text>
-  <text x="430" y="326" fill="#d4d4d4">feat/session-band   未 commit 3</text>
+  <text x="430" y="326" fill="#d4d4d4">5時間枠 32% 残り 3h 10m</text>
+  <text x="700" y="326" fill="#d4d4d4">7日枠 11%</text>
+  <text x="430" y="346" fill="#d4d4d4">feat/session-band   未 commit 3</text>
 
   <!-- 選択肢 -->
-  <text x="424" y="364" fill="#f2c94c" font-weight="bold">提案</text>
-  <text x="474" y="364" fill="#858585">実装方針の確認待ち</text>
-  <rect x="424" y="376" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="438" y="396" fill="#b1b9f9">A案で進める</text>
-  <rect x="424" y="414" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="438" y="434" fill="#b1b9f9">B案で進める</text>
-  <rect x="424" y="452" width="148" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="438" y="472" fill="#b1b9f9">別の案を相談</text>
+  <text x="424" y="384" fill="#f2c94c" font-weight="bold">提案</text>
+  <text x="474" y="384" fill="#858585">実装方針の確認待ち</text>
+  <rect x="424" y="396" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="438" y="416" fill="#b1b9f9">A案で進める</text>
+  <rect x="424" y="434" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="438" y="454" fill="#b1b9f9">B案で進める</text>
+  <rect x="424" y="472" width="148" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="438" y="492" fill="#b1b9f9">別の案を相談</text>
 
   <!-- 2 回押す例 -->
-  <text x="424" y="516" fill="#858585">「push」「削除」などを含む案は、2 回押す。</text>
-  <text x="424" y="542" fill="#ff6b80">本当に送りますか？</text>
-  <text x="594" y="542" fill="#6fcf97">送る</text>
-  <text x="644" y="542" fill="#d4d4d4">やめる</text>
+  <text x="424" y="536" fill="#858585">「push」「削除」などを含む案は、2 回押す。</text>
+  <text x="424" y="562" fill="#ff6b80">本当に送りますか？</text>
+  <text x="594" y="562" fill="#6fcf97">送る</text>
+  <text x="644" y="562" fill="#d4d4d4">やめる</text>
 </svg>
