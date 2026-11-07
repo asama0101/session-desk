@@ -138,7 +138,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
         {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
           <Box flexDirection="column">
-            <Box columnGap={2} flexWrap="wrap">
+            <Box flexDirection="column">
               {bd.rows.map(row => (
                 <Box key={`bd-${row.id}`} gap={1}>
                   <Text color={CATEGORY_COLORS[row.id]}>■</Text>
