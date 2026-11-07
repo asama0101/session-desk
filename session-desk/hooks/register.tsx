@@ -5,6 +5,7 @@ import type { Tab } from '../types'
 import {
   DEFAULT_QUICK,
   addQuick,
+  moveQuick,
   parseQuick,
   preview,
   removeQuick,
@@ -70,7 +71,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const { Box, Button, Input, Text } = $.ui.resolve(e)
     const current = await read($, tab)
 
     let body
@@ -120,6 +121,18 @@ export const register: Register = on => {
       const phrases = await read($, quick)
       body = (
         <Box flexDirection="column" gap={1}>
+          {/* 文を足すと key が変わって作り直され、入力欄が空になる。足せなかったとき（空・重複）は、入力した文が残る。 */}
+          <Input
+            key={`quick-new-${phrases.length}`}
+            placeholder="新しい定型文を入力して Enter"
+            submitLabel="追加"
+            onSubmit={value => {
+              const next = addQuick(phrases, value)
+              if (next.length !== phrases.length) {
+                void saveQuick($, next)
+              }
+            }}
+          />
           {phrases.length === 0 && <Text dimColor>なし</Text>}
           {phrases.map((text, i) => (
             <Box flexDirection="column">
@@ -135,6 +148,26 @@ export const register: Register = on => {
                 >
                   <Text color="suggestion">▶ 送信</Text>
                 </Button>
+                {i > 0 && (
+                  <Button
+                    key={`quick-up-${i}`}
+                    plain
+                    label="▲ 上へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
+                  >
+                    <Text color="suggestion">▲ 上へ</Text>
+                  </Button>
+                )}
+                {i < phrases.length - 1 && (
+                  <Button
+                    key={`quick-down-${i}`}
+                    plain
+                    label="▼ 下へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
+                  >
+                    <Text color="suggestion">▼ 下へ</Text>
+                  </Button>
+                )}
                 <Button
                   key={`quick-del-${i}`}
                   plain

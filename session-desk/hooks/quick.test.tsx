@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULT_QUICK, addQuick, parseQuick, removeQuick } from './lib'
+import { DEFAULT_QUICK, addQuick, moveQuick, parseQuick, removeQuick } from './lib'
 import { ancestorsOf, parentOf, textsOf } from './test-kit'
 
 const PANE = {
@@ -187,5 +187,100 @@ test('the quick tab shows a note when every phrase is deleted', async ($, on) =>
   await start($)
   const ui = await open($)
   expect(await ui.find({ type: 'Text', text: 'なし' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('moveQuick swaps a phrase with its neighbour and ignores moves off either end', async () => {
+  expect(moveQuick(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c'])
+  expect(moveQuick(['a', 'b', 'c'], 2, -1)).toEqual(['a', 'c', 'b'])
+  expect(moveQuick(['a', 'b', 'c'], 0, -1)).toEqual(['a', 'b', 'c'])
+  expect(moveQuick(['a', 'b', 'c'], 2, 1)).toEqual(['a', 'b', 'c'])
+  expect(moveQuick(['a', 'b', 'c'], 9, -1)).toEqual(['a', 'b', 'c'])
+})
+
+test('the first phrase has no ▲ and the last has no ▼; the others have both', async ($, on) => {
+  fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  expect(await ui.find({ key: 'quick-up-0' })).toBeUndefined()
+  expect(await ui.find({ key: 'quick-down-0' })).toBeDefined()
+  expect(await ui.find({ key: 'quick-up-1' })).toBeDefined()
+  expect(await ui.find({ key: 'quick-down-1' })).toBeDefined()
+  expect(await ui.find({ key: 'quick-up-2' })).toBeDefined()
+  expect(await ui.find({ key: 'quick-down-2' })).toBeUndefined()
+  const up = JSON.stringify(await ui.find({ key: 'quick-up-1' }))
+  expect(up).toContain('"plain":true')
+  expect(up).toContain('"children":["▲ 上へ"]')
+  const down = JSON.stringify(await ui.find({ key: 'quick-down-1' }))
+  expect(down).toContain('"children":["▼ 下へ"]')
+  // 4 つの操作は、同じ段にある。
+  const tree = await ui.drawn()
+  expect(parentOf(tree, 'quick-up-1')).toBe(parentOf(tree, 'quick-1'))
+  expect(parentOf(tree, 'quick-down-1')).toBe(parentOf(tree, 'quick-del-1'))
+  await ui.unmount()
+})
+
+test('▼ and ▲ reorder the phrases and save the new order to the store', async ($, on) => {
+  const { saved } = fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  await ui.press({ key: 'quick-down-0' })
+  expect(await labels(ui)).toEqual([PHRASES[1], PHRASES[0], PHRASES[2]])
+  expect(saved.get('quick')).toEqual([PHRASES[1], PHRASES[0], PHRASES[2]])
+  await ui.press({ key: 'quick-up-2' })
+  expect(await labels(ui)).toEqual([PHRASES[1], PHRASES[2], PHRASES[0]])
+  expect(saved.get('quick')).toEqual([PHRASES[1], PHRASES[2], PHRASES[0]])
+  await ui.unmount()
+})
+
+test('an order saved earlier is restored at session start', async ($, on) => {
+  fakeEngine(on, { quick: [PHRASES[2], PHRASES[0]] })
+  await start($)
+  const ui = await open($)
+  expect(await labels(ui)).toEqual([PHRASES[2], PHRASES[0]])
+  await ui.unmount()
+})
+
+test('the field at the top of the quick tab adds a phrase of your own, saves it and is replaced by an empty one', async ($, on) => {
+  const { saved } = fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  const field = JSON.stringify(await ui.find({ key: 'quick-new-3' }))
+  expect(field).toContain('"placeholder"')
+  expect(field).toContain('"submitLabel":"追加"')
+  await ui.input({ key: 'quick-new-3', text: '  テストを実行して  ' })
+  expect(await labels(ui)).toEqual([...PHRASES, 'テストを実行して'])
+  expect(saved.get('quick')).toEqual([...PHRASES, 'テストを実行して'])
+  // 足したあとは、入力欄が新しい（空の）ものに替わる。
+  expect(await ui.find({ key: 'quick-new-3' })).toBeUndefined()
+  expect(await ui.find({ key: 'quick-new-4' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the field ignores a blank and a phrase that is already there', async ($, on) => {
+  const { saved } = fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  await ui.input({ key: 'quick-new-3', text: '   ' })
+  await ui.input({ key: 'quick-new-3', text: PHRASES[0] ?? '' })
+  expect(await labels(ui)).toEqual(PHRASES)
+  expect(saved.has('quick')).toBe(false)
+  // 足せなかったときは入力欄を作り直さない（入力した文が残る）。
+  expect(await ui.find({ key: 'quick-new-3' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a phrase added in the field can be sent, moved and deleted like the others', async ($, on) => {
+  const { submitted, saved } = fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  await ui.input({ key: 'quick-new-3', text: '追加した文' })
+  await ui.press({ key: 'quick-3' })
+  expect(submitted).toEqual(['追加した文'])
+  await ui.press({ key: 'quick-up-3' })
+  expect(await labels(ui)).toEqual([PHRASES[0], PHRASES[1], '追加した文', PHRASES[2]])
+  await ui.press({ key: 'quick-del-2' })
+  expect(await labels(ui)).toEqual(PHRASES)
+  expect(saved.get('quick')).toEqual(PHRASES)
   await ui.unmount()
 })

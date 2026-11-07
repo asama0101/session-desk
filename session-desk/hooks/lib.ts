@@ -48,3 +48,16 @@ export function addQuick(list: readonly string[], text: string): string[] {
 export function removeQuick(list: readonly string[], index: number): string[] {
   return list.filter((_, i) => i !== index)
 }
+
+// index の文を、delta（-1 で上、1 で下）だけ動かす。範囲の外へは動かさない。
+export function moveQuick(list: readonly string[], index: number, delta: number): string[] {
+  const to = index + delta
+  if (index < 0 || index >= list.length || to < 0 || to >= list.length) {
+    return [...list]
+  }
+  const next = [...list]
+  next[index] = list[to] as string
+  next[to] = list[index] as string
+
+  return next
+}
