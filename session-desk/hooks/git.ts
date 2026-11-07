@@ -32,6 +32,8 @@ export type Snapshot = {
   baseRef: string | null
   // `git remote -v` の結果。取れなかったときは null。
   remotes: Remote[] | null
+  // 既定ブランチをチェックアウトしているときだけ、最新のタグと、それ以降の commit の数。タグがない・取れないときは null。
+  release: { tag: string; ahead: number } | null
   branches: BranchRow[]
   warnings: string[]
 }
@@ -41,7 +43,7 @@ type Detail = { createdAt: string | null; firstCommitAt: string | null; pushedAt
 const BUDGET = 30
 const PR_LIMIT = 200
 const PR_FIELDS =
-  'number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  'number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url'
 
 // reject（起動できない・時間切れ）は、終了コード -1 の結果にそろえる。
 type Safe = RunResult & { rejected: boolean }
@@ -59,7 +61,7 @@ const usable = (r: Safe) => r.exitCode === 0 && !r.isStdoutTruncated
 const clock = (d: Date) => d.toTimeString().slice(0, 8)
 
 function emptySnapshot(cwd: string, gitAt: string, problem: Problem, warnings: string[] = []): Snapshot {
-  return { cwd, gitAt, ghAt: null, problem, ghProblem: false, prs: null, prCapped: false, baseRef: null, remotes: null, branches: [], warnings }
+  return { cwd, gitAt, ghAt: null, problem, ghProblem: false, prs: null, prCapped: false, baseRef: null, remotes: null, release: null, branches: [], warnings }
 }
 
 // 現在のブランチ、選択中のブランチ、残りは名前順に並べて、先頭 limit 件。
@@ -111,6 +113,18 @@ async function ancestry(run: Run, ref: string, oid: string): Promise<Relation> {
 
 const newestClosed = (prs: readonly Pr[]) =>
   prs.filter(p => p.state !== 'OPEN' && !p.isCrossRepository).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
+
+// 既定ブランチから届く最新のタグと、そのタグ以降の commit の数。
+async function releaseOf(run: Run, defaultName: string): Promise<{ tag: string; ahead: number } | null> {
+  const described = await git(run, 'describe', '--tags', '--abbrev=0', `refs/heads/${defaultName}`)
+  const tag = usable(described) ? stripControl(described.stdout.trim()) : ''
+  if (tag === '') {
+    return null
+  }
+  const ahead = await countOf(run, `refs/tags/${tag}..refs/heads/${defaultName}`)
+
+  return ahead === null ? null : { tag, ahead }
+}
 
 export async function collect(
   run: Run,
@@ -183,6 +197,9 @@ export async function collect(
     }
     defaultDiff = d !== null && (d.ahead > 0 || d.behind > 0) ? d : null
   }
+
+  // 未リリースの commit（既定ブランチにいるときだけ。git を 2 本使う）
+  const release = defaultName !== null && currentName === defaultName && oidOf.has(defaultName) ? await releaseOf(run, defaultName) : null
 
   // PR（gh）
   let prs: Pr[] | null = null
@@ -276,7 +293,7 @@ export async function collect(
   }
   const branches = heads.map(n => built.get(n)).filter((b): b is BranchRow => b !== undefined)
 
-  return { cwd: opts.cwd, gitAt, ghAt, problem: null, ghProblem, prs, prCapped, baseRef, remotes, branches, warnings }
+  return { cwd: opts.cwd, gitAt, ghAt, problem: null, ghProblem, prs, prCapped, baseRef, remotes, release, branches, warnings }
 }
 
 // 他のタブでも使う、軽い読み取り。git は 2 本だけ。status が取れなければ、Git のリポジトリとはみなさない。

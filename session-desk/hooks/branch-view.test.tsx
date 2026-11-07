@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
+import { buildRow } from './branch'
 import { formatAt, renderBranchTab } from './branch-view'
 import { textsOf } from './test-kit'
 
@@ -66,6 +67,8 @@ type Over = {
   refsTruncated?: boolean
   refsExit?: number
   submitFails?: boolean
+  describe?: object
+  tagCount?: string
 }
 
 function engine(on: any, over: Over = {}) {
@@ -107,6 +110,8 @@ function engine(on: any, over: Over = {}) {
     else if (key === 'status --porcelain=v1 -z') result = { exitCode: 0, stdout: over.status ?? '' }
     else if (key === 'remote -v') result = { exitCode: 0, stdout: REMOTE_V, ...over.remote }
     else if (key.startsWith('rev-list --left-right --count')) result = { exitCode: 0, stdout: over.diff ?? '0\t0\n' }
+    else if (key.startsWith('describe --tags')) result = { exitCode: 128, stdout: '', ...over.describe }
+    else if (key.startsWith('rev-list --count refs/tags/')) result = { exitCode: 0, stdout: over.tagCount ?? '0\n' }
     else if (key.startsWith('rev-list --count')) result = { exitCode: 0, stdout: '0\n' }
     else if (key.startsWith('gh pr list')) result = { exitCode: 0, stdout: PRS, ...over.gh }
     else if (key !== 'status --porcelain=v1 -z') result = { exitCode: 1, stdout: '' }
@@ -252,7 +257,7 @@ test('the remotes are listed under the heading with tidy URLs', async ($, on) =>
   {
     const lines = await texts(ui)
     expect(lines).toContain('origin')
-    expect(lines).toContain('github.com/a/b')
+    expect(JSON.stringify(await ui.drawn())).toContain('"href":"https://github.com/a/b"')
   }
   await ui.unmount()
 })
@@ -268,9 +273,9 @@ test('several remotes are all listed, and credentials in a URL never reach the s
   const ui = await open($, e.calls)
   const lines = await texts(ui)
   expect(lines).toContain('origin')
-  expect(lines).toContain('github.com/a/b')
+  expect(JSON.stringify(await ui.drawn())).toContain('"href":"https://github.com/a/b"')
   expect(lines).toContain('upstream')
-  expect(lines).toContain('github.com/c/d')
+  expect(JSON.stringify(await ui.drawn())).toContain('"href":"https://github.com/c/d"')
   expect(JSON.stringify(await ui.drawn())).not.toContain('SECRET')
   await ui.unmount()
 })
@@ -293,7 +298,7 @@ test('with only a remote other than origin the screen lists it and adds an origi
   const ui = await open($, e.calls)
   const lines = await texts(ui)
   expect(lines).toContain('upstream')
-  expect(lines).toContain('github.com/c/d')
+  expect(JSON.stringify(await ui.drawn())).toContain('"href":"https://github.com/c/d"')
   expect(lines).toContain('origin なし')
   await ui.unmount()
 })
@@ -408,7 +413,7 @@ test('remote line shows the origin name and the URL in separate texts', async ($
   const ui = await open($, e.calls)
   const lines = await texts(ui)
   expect(lines).toContain('origin')
-  expect(lines).toContain('github.com/a/b')
+  expect(JSON.stringify(await ui.drawn())).toContain('"href":"https://github.com/a/b"')
   await ui.unmount()
 })
 
@@ -419,6 +424,8 @@ test('a token in a remote URL never reaches the screen', async () => {
       problem: null,
       branches: [],
       remotes: [{ name: 'origin', url: 'https://user:tok123@github.com/a/b.git' }],
+      release: null,
+      cwd: 'D:/p',
       warnings: [],
       gitAt: '00:00:00',
       ghAt: null,
@@ -438,6 +445,8 @@ test('a token in a remote URL never reaches the screen', async () => {
 const manyBranches = (count: number, currentIndex: number) => ({
   problem: null,
   remotes: [{ name: 'origin', url: 'github.com/a/b' }],
+  release: null,
+  cwd: 'D:/p',
   warnings: [],
   gitAt: '00:00:00',
   ghAt: null,
@@ -547,4 +556,136 @@ test('next button: a question dialog holds the keys, so the request is not sent 
   expect(e.submitted).toEqual([])
   expect(e.toasts).toEqual(['質問や許可の待ち中です。先に答えてください'])
   await ui.unmount()
+})
+
+// 「リリースするか、しないか」: 既定ブランチをチェックアウトしていて、最新のタグより先に commit があるとき。
+const ON_MAIN = { head: { stdout: 'refs/heads/main\n' }, describe: { exitCode: 0, stdout: 'v1.2.0\n' }, tagCount: '3\n' }
+
+test('release: on the default branch with commits after the latest tag, the choice is offered and 「リリースする」 sends the request once', async ($, on) => {
+  const e = engine(on, ON_MAIN)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('リリース  v1.2.0 以降 3 件が、まだリリースされていません')
+  expect(JSON.stringify(await ui.find({ key: 'git-release' }))).toContain('▶ リリースする')
+  expect(await ui.find({ key: 'git-release-skip' })).toBeDefined()
+  await ui.press({ key: 'git-release' })
+  await ui.press({ key: 'git-release' })
+  await flush()
+  expect(e.submitted).toEqual(['main の未リリースの変更（v1.2.0 以降 3 件）をリリースしてください（version を上げる PR、タグ、Release の順）'])
+  await ui.unmount()
+})
+
+test('release: 「今はしない」 hides the choice until the state changes', async ($, on) => {
+  const e = engine(on, ON_MAIN)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'git-release-skip' })
+  await flush()
+  expect(await ui.find({ key: 'git-release' })).toBeUndefined()
+  expect(await ui.find({ key: 'git-release-skip' })).toBeUndefined()
+  expect(await texts(ui)).not.toContain('リリース  v1.2.0 以降 3 件が、まだリリースされていません')
+  expect(e.submitted).toEqual([])
+  await ui.unmount()
+})
+
+const NOT_OFFERED: [string, object][] = [
+  ['off the default branch', {}],
+  ['with no commit after the tag', { ...ON_MAIN, tagCount: '0\n' }],
+  ['with no tag', { ...ON_MAIN, describe: { exitCode: 128 } }],
+]
+for (const [name, over] of NOT_OFFERED) {
+  test(`release: nothing is offered ${name}`, async ($, on) => {
+    const e = engine(on, over)
+    await start($)
+    const ui = await open($, e.calls)
+    expect(await ui.find({ key: 'git-release' })).toBeUndefined()
+    expect((await texts(ui)).some(t => t.startsWith('リリース  '))).toBe(false)
+    await ui.unmount()
+  })
+}
+
+test('local and remote are labelled: ローカル shows the folder, リモート shows the name and the URL', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('ローカル')
+  expect(lines).toContain('D:/p')
+  expect(lines).toContain('リモート')
+  expect(lines).toContain('origin')
+  // ローカルの行が先、リモートの行がその次。
+  expect(lines.indexOf('ローカル')).toBeLessThan(lines.indexOf('リモート'))
+  await ui.unmount()
+})
+
+test('a GitHub-style remote URL is a link (https), and a local path or a URL with no host name is plain text', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button', Link: 'Link' }
+  const draw = (url: string) =>
+    JSON.stringify(
+      renderBranchTab(ui, {
+        snapshot: { problem: null, branches: [], remotes: [{ name: 'origin', url }], release: null, cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: null } as any,
+        selected: null,
+        columns: 80,
+        offsetMin: 0,
+        onSelect() {},
+        more: { open: false, onToggle() {} },
+        onNext() {},
+        release: { skippedKey: null, onSkip() {} },
+        busy: false,
+      }),
+    )
+  const link = draw('https://user:tok@github.com/a/b.git')
+  expect(link).toContain('"type":"Link"')
+  expect(link).toContain('"href":"https://github.com/a/b"')
+  expect(link).not.toContain('tok')
+  expect(draw('C:/repos/x.git')).not.toContain('"type":"Link"')
+  expect(draw('/srv/git/x')).not.toContain('"type":"Link"')
+  // Link が渡されないときも、URL は文字として出る。
+  expect(JSON.stringify(renderBranchTab({ Box: 'Box', Text: 'Text', Button: 'Button' }, { snapshot: { problem: null, branches: [], remotes: [{ name: 'origin', url: 'github.com/a/b' }], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: null } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skippedKey: null, onSkip() {} }, busy: false }))).toContain('github.com/a/b')
+})
+
+// マージの段階では、PR のページへのリンクを、その行の右端に出す。
+const prRow = (over: Record<string, unknown>) =>
+  buildRow('feat/x', 'feat', true, {
+    dirty: false,
+    ahead: 2,
+    pushed: true,
+    createdAt: null,
+    firstCommitAt: null,
+    lastCommitAt: null,
+    pushedAt: null,
+    pr: { number: 19, state: 'OPEN', isDraft: false, reviewDecision: '', createdAt: '2026-11-07T12:00:00Z', mergedAt: null, headRefName: 'feat/x', headRefOid: 'abc', isCrossRepository: false, latestReviews: [], url: 'https://github.com/a/b/pull/19', ...over },
+    prKnown: true,
+    hasRemote: true,
+    originDiff: null,
+  } as any)
+
+test('merge: the stage row of a PR waiting to be merged carries a link to the PR page', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button', Link: 'Link' }
+  const draw = (row: any, Link = 'Link') =>
+    JSON.stringify(
+      renderBranchTab({ ...ui, Link } as any, {
+        snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: '00:00:00' } as any,
+        selected: null,
+        columns: 80,
+        offsetMin: 0,
+        onSelect() {},
+        more: { open: false, onToggle() {} },
+        onNext() {},
+        release: { skippedKey: null, onSkip() {} },
+        busy: false,
+      }),
+    )
+  const row = prRow({})
+  expect(row.now).toEqual({ id: 7, text: 'マージ待ち' })
+  const json = draw(row)
+  expect(json).toContain('"href":"https://github.com/a/b/pull/19"')
+  expect(json).toContain('PR #19  github.com/a/b/pull/19')
+  // レビューを待っている段階（マージの前）には、まだ出さない。
+  expect(draw(prRow({ reviewDecision: 'REVIEW_REQUIRED' }))).not.toContain('/pull/19')
+  // url がない・https でない・閉じた PR は、出さない。
+  expect(draw(prRow({ url: undefined }))).not.toContain('/pull/')
+  expect(draw(prRow({ url: 'javascript:alert(1)' }))).not.toContain('javascript')
+  // Link が渡されないときは、文字で出す。
+  expect(draw(row, undefined as any)).toContain('PR #19  github.com/a/b/pull/19')
 })

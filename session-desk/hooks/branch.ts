@@ -16,6 +16,8 @@ export type Pr = {
   headRefOid: string
   isCrossRepository: boolean
   latestReviews: { submittedAt: string }[]
+  // PR のページの URL（gh が返す）。マージの段階で、リンクにして出す。
+  url?: string
 }
 
 // null は「取れなかった」。dirty: status を取れない。ahead: 比較の基準が決まらない。pushed: 確認できない。

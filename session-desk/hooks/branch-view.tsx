@@ -64,6 +64,29 @@ function remoteLines(remotes: Snapshot['remotes']): RemoteLine[] {
   return remotes.some(r => r.name === 'origin') ? lines : [...lines, { text: 'origin なし' }]
 }
 
+// GitHub などの URL（ホスト名つき）なら、押せるリンクにする。ローカルのパスなど、それ以外はふつうの文字。
+// href を渡すと、その URL へのリンクにする（渡さなければ、url に https:// を付ける）。
+function linkOf(Link: any, url: string, href?: string) {
+  if (href !== undefined) {
+    return Link !== undefined ? <Link href={href}>{url}</Link> : url
+  }
+
+  return Link !== undefined && /^[A-Za-z0-9.-]+\.[A-Za-z]{2,}\/\S+$/.test(url) ? <Link href={`https://${url}`}>{url}</Link> : url
+}
+
+// 経過の「マージ」の段階の番号。
+const MERGE_STAGE = 7
+
+// マージの段階の行に出す、PR のページへのリンク。gh が返した https の URL だけ。
+function prLinkOf(row: BranchRow | undefined): { text: string; href: string } | null {
+  const pr = row?.facts.pr
+  if (pr === null || pr === undefined || pr.state !== 'OPEN' || typeof pr.url !== 'string' || !/^https:\/\/\S+$/.test(pr.url)) {
+    return null
+  }
+
+  return { text: stripControl(`PR #${pr.number}  ${tidyUrl(pr.url)}`), href: pr.url }
+}
+
 // テーマの色名。明るい端末でも暗い端末でも読める。
 const STATUS_COLOR = { done: 'success', todo: 'inactive', unknown: 'error', skipped: 'inactive' } as const
 
@@ -103,7 +126,8 @@ function stageDate(stage: Stage, offsetMin: number): string {
 // レールの記号。最初は ┌、最後は └、間は ├。
 const railGlyph = (i: number, count: number) => (i === 0 ? '┌' : i === count - 1 ? '└' : '├')
 
-type Ui = { Box: any; Text: any; Button: any }
+// Link は、端末では OSC 8 のハイパーリンク。渡されないときは、ふつうの文字で出す。
+type Ui = { Box: any; Text: any; Button: any; Link?: any }
 type Args = {
   snapshot: Snapshot | null
   selected: string | null
@@ -114,12 +138,14 @@ type Args = {
   more: { open: boolean; onToggle(): void }
   // 「次へ進む」ボタンを押したとき。
   onNext(next: Next): void
+  // 「リリースしますか」の「今はしない」。skippedKey は、しないと答えた状態の key（状態が変わると、また出る）。
+  release: { skippedKey: string | null; onSkip(key: string): void }
   // Claude が動いている間は真。ボタンは押せない（質問や許可の待ちと、依頼が衝突しないように）。
   busy: boolean
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
-  const { Box, Text, Button } = ui
+  const { Box, Text, Button, Link } = ui
   const snap = a.snapshot
   if (snap === null) {
     return <Text dimColor>読み込み中</Text>
@@ -162,16 +188,50 @@ export function renderBranchTab(ui: Ui, a: Args) {
     </Box>
   )
 
+  const prLink = prLinkOf(chosen)
+
   // 「今」の段階の行に出す、次へ進むボタン（いまのブランチだけ）。
   const defaultName = snap.branches.find(b => b.kind === 'default')?.name ?? null
   const next = chosen === undefined ? null : nextOf(chosen, defaultName)
+
+  // 「リリースするか、しないか」。既定ブランチをチェックアウトしていて、最新のタグより先に commit があるとき。「今はしない」を押した状態では出さない。
+  const pending =
+    snap.release !== null && snap.release.ahead > 0 && chosen !== undefined && chosen.kind === 'default' && chosen.isCurrent
+      ? {
+          key: `release:${snap.release.tag}:${snap.release.ahead}`,
+          label: '▶ リリースする',
+          prompt: `${chosen.name} の未リリースの変更（${snap.release.tag} 以降 ${snap.release.ahead} 件）をリリースしてください（version を上げる PR、タグ、Release の順）`,
+        }
+      : null
+  const release: Next | null = pending !== null && a.release.skippedKey !== pending.key ? pending : null
 
   const detail = (
     <Box flexDirection="column">
       {chosen === undefined ? (
         <Text dimColor>ブランチがありません</Text>
       ) : chosen.kind === 'default' ? (
-        <Text dimColor>経過はありません（既定ブランチ）</Text>
+        <Box flexDirection="column">
+          <Text dimColor>経過はありません（既定ブランチ）</Text>
+          {release !== null && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text>{stripControl(`リリース  ${snap.release?.tag ?? ''} 以降 ${snap.release?.ahead ?? 0} 件が、まだリリースされていません`)}</Text>
+              <Box gap={2}>
+                {a.busy ? (
+                  <Text dimColor>{release.label}</Text>
+                ) : (
+                  <Button key="git-release" plain label={release.label} onPress={() => a.onNext(release)}>
+                    <Text bold color="suggestion">
+                      {release.label}
+                    </Text>
+                  </Button>
+                )}
+                <Button key="git-release-skip" plain label="今はしない" onPress={() => a.release.onSkip(release.key)}>
+                  <Text>今はしない</Text>
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </Box>
       ) : (
         <Box flexDirection="column">
           <Text bold>{stripControl(chosen.name)}</Text>
@@ -188,6 +248,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
                   </Text>
                 </Box>
                 {date !== '' && <Text dimColor>{date}</Text>}
+                {isNow && chosen.now.id === MERGE_STAGE && prLink !== null && <Text>{linkOf(Link, prLink.text, prLink.href)}</Text>}
                 {isNow && next !== null && (a.busy ? (
                   <Text dimColor>{next.label}</Text>
                 ) : (
@@ -209,13 +270,18 @@ export function renderBranchTab(ui: Ui, a: Args) {
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
         <Text bold>{`ブランチ ${snap.branches.length}`}</Text>
+        <Box gap={2}>
+          <Text dimColor>ローカル</Text>
+          <Text>{stripControl(snap.cwd)}</Text>
+        </Box>
         {remoteLines(snap.remotes).map(line =>
           'text' in line ? (
             <Text dimColor>{stripControl(line.text)}</Text>
           ) : (
             <Box gap={2}>
+              <Text dimColor>リモート</Text>
               <Text color="suggestion">{stripControl(line.name)}</Text>
-              <Text>{stripControl(line.url)}</Text>
+              <Text>{linkOf(Link, stripControl(line.url))}</Text>
             </Box>
           ),
         )}

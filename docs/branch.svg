@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 522" width="960" height="522" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">「Git」タブ（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下にリモートの URL がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: push」。その下に、選んだブランチの名前と、経過が 8 段階で並ぶ。今の段階の行の右端に、「▶ push する」のボタンがある。各段階は縦の線（┌ ├ └）でつながり、日時は右端にある。済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に、git と gh を読んだ時刻がある。一番下に、git と gh を読んだ時刻がある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下に「ローカル」のフォルダと、「リモート」の名前と URL（クリックできるリンク）がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: push」。その下に、選んだブランチの名前と、経過が 8 段階で並ぶ。今の段階の行の右端に、「▶ push する」のボタンがある。各段階は縦の線（┌ ├ └）でつながり、日時は右端にある。済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に、git と gh を読んだ時刻がある。一番下に、git と gh を読んだ時刻がある。</desc>
 
   <!-- 端末 -->
-  <rect x="0" y="0" width="960" height="500" rx="10" fill="#1e1e1e"/>
-  <rect x="0.5" y="0.5" width="959" height="499" rx="10" fill="none" stroke="#3c3c3c"/>
+  <rect x="0" y="0" width="960" height="522" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="959" height="521" rx="10" fill="none" stroke="#3c3c3c"/>
 
   <!-- 左: 会話と入力欄 -->
   <text x="24" y="40" fill="#858585">&gt; commit して、push して</text>
@@ -33,28 +33,29 @@
 
   <!-- 見出しとリモート -->
   <text x="424" y="116" fill="#d4d4d4" font-weight="bold">ブランチ 3</text>
-  <text x="424" y="138" fill="#858585">origin  github.com/asama0101/session-desk</text>
+  <text x="424" y="138" fill="#858585">ローカル</text><text x="496" y="138" fill="#d4d4d4">D:\claude\local-repo\session-desk</text>
+  <text x="424" y="160" fill="#858585">リモート</text><text x="496" y="160" fill="#b1b9f9">origin</text><text x="556" y="160" fill="#4fd6e0" text-decoration="underline">github.com/asama0101/session-desk</text>
 
   <!-- 一覧（右端が「今」。選択中は太字） -->
-  <text x="424" y="170" fill="#b1b9f9" font-weight="bold">＊feat feat/login  ↑2  次: push</text>
-  <text x="424" y="192" fill="#6fcf97">　docs docs/readme  マージ待ち</text>
-  <text x="424" y="214" fill="#858585">　既定 main  既定</text>
+  <text x="424" y="192" fill="#b1b9f9" font-weight="bold">＊feat feat/login  ↑2  次: push</text>
+  <text x="424" y="214" fill="#6fcf97">　docs docs/readme  マージ待ち</text>
+  <text x="424" y="236" fill="#858585">　既定 main  既定</text>
 
   <!-- 選んだブランチの経過（縦の線でつなぐ。日時は右端） -->
-  <text x="424" y="246" fill="#d4d4d4" font-weight="bold">feat/login</text>
-  <text x="424" y="268" fill="#6fcf97">┌</text><text x="446" y="268" fill="#6fcf97">✓ ブランチを切る</text>
-  <text x="934" y="268" fill="#858585" text-anchor="end">11/07 13:55</text>
-  <text x="424" y="290" fill="#6fcf97">├</text><text x="446" y="290" fill="#6fcf97">✓ 編集</text>
-  <text x="934" y="290" fill="#858585" text-anchor="end">11/07 13:58</text>
-  <text x="424" y="312" fill="#6fcf97">├</text><text x="446" y="312" fill="#6fcf97">✓ commit  2 件</text>
-  <text x="934" y="312" fill="#858585" text-anchor="end">11/07 14:20</text>
-  <text x="424" y="334" fill="#f2c94c">├</text><text x="446" y="334" fill="#f2c94c" font-weight="bold">● push  次: push</text>
-  <text x="934" y="334" fill="#b1b9f9" font-weight="bold" text-anchor="end">▶ push する</text>
-  <text x="424" y="356" fill="#5a5a5a">├</text><text x="446" y="356" fill="#858585">○ PR</text>
-  <text x="424" y="378" fill="#5a5a5a">├</text><text x="446" y="378" fill="#858585">○ レビュー</text>
-  <text x="424" y="400" fill="#5a5a5a">├</text><text x="446" y="400" fill="#858585">○ マージ</text>
-  <text x="424" y="422" fill="#5a5a5a">└</text><text x="446" y="422" fill="#858585">○ 削除</text>
+  <text x="424" y="268" fill="#d4d4d4" font-weight="bold">feat/login</text>
+  <text x="424" y="290" fill="#6fcf97">┌</text><text x="446" y="290" fill="#6fcf97">✓ ブランチを切る</text>
+  <text x="934" y="290" fill="#858585" text-anchor="end">11/07 13:55</text>
+  <text x="424" y="312" fill="#6fcf97">├</text><text x="446" y="312" fill="#6fcf97">✓ 編集</text>
+  <text x="934" y="312" fill="#858585" text-anchor="end">11/07 13:58</text>
+  <text x="424" y="334" fill="#6fcf97">├</text><text x="446" y="334" fill="#6fcf97">✓ commit  2 件</text>
+  <text x="934" y="334" fill="#858585" text-anchor="end">11/07 14:20</text>
+  <text x="424" y="356" fill="#f2c94c">├</text><text x="446" y="356" fill="#f2c94c" font-weight="bold">● push  次: push</text>
+  <text x="934" y="356" fill="#b1b9f9" font-weight="bold" text-anchor="end">▶ push する</text>
+  <text x="424" y="378" fill="#5a5a5a">├</text><text x="446" y="378" fill="#858585">○ PR</text>
+  <text x="424" y="400" fill="#5a5a5a">├</text><text x="446" y="400" fill="#858585">○ レビュー</text>
+  <text x="424" y="422" fill="#5a5a5a">├</text><text x="446" y="422" fill="#858585">○ マージ</text>
+  <text x="424" y="444" fill="#5a5a5a">└</text><text x="446" y="444" fill="#858585">○ 削除</text>
 
   <!-- 最後に読んだ時刻 -->
-  <text x="424" y="472" fill="#858585">git 14:21:05 / gh 14:21:00</text>
+  <text x="424" y="494" fill="#858585">git 14:21:05 / gh 14:21:00</text>
 </svg>

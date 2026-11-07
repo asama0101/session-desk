@@ -248,11 +248,11 @@ test('applyDetail fills the dates and keeps the statuses', async () => {
 })
 
 test('requeryPr adopts a PR found by --head, and reports unknown when gh fails', async () => {
-  const found = fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': ok(JSON.stringify([GH_PR({})])) })
+  const found = fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url': ok(JSON.stringify([GH_PR({})])) })
   const r = await requeryPr(found.run, 'docs/b', 'B1', 3, 'refs/remotes/origin/main')
   expect(r.known).toBe(true)
   expect(r.pr?.state).toBe('MERGED')
-  const failed = await requeryPr(fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': { exitCode: 1 } }).run, 'docs/b', 'B1', 3, 'refs/remotes/origin/main')
+  const failed = await requeryPr(fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url': { exitCode: 1 } }).run, 'docs/b', 'B1', 3, 'refs/remotes/origin/main')
   expect(failed).toEqual({ pr: null, known: false })
 })
 
@@ -282,7 +282,7 @@ test('enrich leaves the default branch, and an unknown name, untouched', async (
 
 test('when the PR list hit its limit, enrich asks gh for the chosen branch alone and turns unknown into a real answer', async () => {
   const many = Array.from({ length: 200 }, (_, i) => GH_PR({ number: 100 + i, headRefName: `other${i}`, state: 'CLOSED' }))
-  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url'
   const f = fake({ gh: ok(JSON.stringify(many)), 'rev-parse --verify refs/heads/feat/a': ok('A1\n'), [headKey]: ok('[]'), ...FEAT_REFLOG })
   const snap = await collect(f.run, null, OPTS)
   expect(snap.prCapped).toBe(true)
@@ -384,7 +384,7 @@ test('a branch that was fast-forward merged (tip equals the PR head, no commits 
 })
 
 test('requeryPr also refuses an old merged PR when the branch has no commits of its own', async () => {
-  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url'
   const f = fake({ [headKey]: ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'OLD' })])), 'merge-base --is-ancestor refs/heads/feat/a OLD': { exitCode: 0 } })
   expect(await requeryPr(f.run, 'feat/a', 'A1', 0, 'refs/remotes/origin/main')).toEqual({ pr: null, known: true })
   expect((await requeryPr(f.run, 'feat/a', 'A1', 2, 'refs/remotes/origin/main')).pr?.state).toBe('MERGED')
@@ -419,7 +419,7 @@ test('a PR merged with a merge commit and updated after the branch was cut still
 })
 
 test('requeryPr keeps a merge-commit merged PR for a branch with no commits ahead', async () => {
-  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews,url'
   const f = fake({
     [headKey]: ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'NEWER' })])),
     'merge-base --is-ancestor refs/heads/feat/a NEWER': { exitCode: 0 },
