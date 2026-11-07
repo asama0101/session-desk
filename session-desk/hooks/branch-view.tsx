@@ -17,7 +17,8 @@ const PROBLEM_TEXT: Record<Exclude<Problem, null>, string> = {
   'not-repo': 'Git のリポジトリではありません',
   'no-commit': 'commit がまだありません',
   'unsafe-owner': 'リポジトリの所有者が違います',
-  timeout: '取得が時間切れです',
+  timeout: '取得が時間切れか、git を実行できません',
+  'git-failed': 'git の実行に失敗しました',
 }
 
 // この幅（列）以上なら、一覧と経過を左右に並べる。
@@ -153,7 +154,9 @@ export function renderBranchTab(ui: Ui, a: Args) {
 
   const detail = (
     <Box flexDirection="column">
-      {chosen === undefined || chosen.kind === 'default' ? (
+      {chosen === undefined ? (
+        <Text dimColor>ブランチがありません</Text>
+      ) : chosen.kind === 'default' ? (
         <Text dimColor>経過はありません（既定ブランチ）</Text>
       ) : (
         chosen.stages.map(stage => {
