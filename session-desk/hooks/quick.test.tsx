@@ -213,6 +213,11 @@ test('the first phrase has no ▲ and the last has no ▼; the others have both'
   expect(up).toContain('"children":["▲ 上へ"]')
   const down = JSON.stringify(await ui.find({ key: 'quick-down-1' }))
   expect(down).toContain('"children":["▼ 下へ"]')
+  // 並び替えは、送信・削除より目立たないように、グレー（dimColor）で出す。アクセント色は付けない。
+  for (const move of [up, down]) {
+    expect(move).toContain('"dimColor":true')
+    expect(move).not.toContain('"color":"suggestion"')
+  }
   // 4 つの操作は、同じ段にある。
   const tree = await ui.drawn()
   expect(parentOf(tree, 'quick-up-1')).toBe(parentOf(tree, 'quick-1'))

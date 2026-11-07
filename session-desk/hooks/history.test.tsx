@@ -146,6 +146,15 @@ test('the panel opens on 定型文; the selected tab is marked with ▸ and draw
   await ui.unmount()
 })
 
+test('the tabs are in the order 定型文, 履歴', async ($, on) => {
+  fakeEngine(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const json = JSON.stringify(await ui.drawn())
+  expect(json.indexOf('tab-quick')).toBeGreaterThan(-1)
+  expect(json.indexOf('tab-quick')).toBeLessThan(json.indexOf('tab-history'))
+  await ui.unmount()
+})
+
 test('one blank row separates the tabs from the body, on both tabs', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
