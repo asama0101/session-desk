@@ -291,13 +291,13 @@ export function renderBand(ui: Ui, a: BandArgs) {
           )}
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">
-              {(n > 0 || hasHead) && thin}
+              {(n > 0 || hasHead) && <Box marginY={1}>{thin}</Box>}
               {node}
             </Box>
           ))}
           {steps !== null && (
             <Box flexDirection="column">
-              {(shown.length > 0 || hasHead) && double}
+              {(shown.length > 0 || hasHead) && <Box marginY={1}>{double}</Box>}
               {steps}
             </Box>
           )}

@@ -230,6 +230,14 @@ test('the whole panel is one double-line frame headed Session + model; sections 
   expect(find(draw(), n => n.props?.borderStyle !== undefined)).toHaveLength(0)
 })
 
+test('every rule has one blank row above and below it', async () => {
+  const steps = { items: ['a'], reason: 'R', recommended: null }
+  const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), steps })
+  const rules = find(tree, n => n.type === 'Box' && n.children.length === 1 && typeof (n.children[0] as Node).children?.[0] === 'string' && /^[─═]+$/.test((n.children[0] as Node).children[0] as string))
+  expect(rules).toHaveLength(3)
+  for (const r of rules) expect(r.props.marginY).toBe(1)
+})
+
 test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
   const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
   const gaps = find(tree, n => n.props?.marginTop === 1)
