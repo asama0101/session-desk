@@ -140,6 +140,19 @@ test('history: the newest 5 show; 「もっと見る」 opens the older ones', a
   await ui.unmount()
 })
 
+test('each tab name carries its icon, the selected and the others', async ($, on) => {
+  fakeEngine(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const tab = async (key: string) => JSON.stringify(await ui.find({ key }))
+  expect(await tab('tab-quick')).toContain('💬 定型文')
+  expect(await tab('tab-history')).toContain('🕘 履歴')
+  expect(await tab('tab-git')).toContain('🔀 Git')
+  await ui.press({ key: 'tab-git' })
+  expect(await tab('tab-git')).toContain('🔀 Git')
+  expect(await tab('tab-quick')).toContain('💬 定型文')
+  await ui.unmount()
+})
+
 test('the panel opens on 定型文; the selected tab is marked with ▸ and drawn normally, the other is dim', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })

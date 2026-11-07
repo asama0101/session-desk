@@ -69,16 +69,16 @@ test('turn.start shows 実行中; sub-agent turn.start / turn.complete / tool.ca
   engine(on)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await draw(ui)).not.toContain('実行中')
+  expect(await draw(ui)).not.toContain('⚡ 実行中')
   await $.turn.start({ text: 'hi', turnId: 's1', agentId: 'a1' })
-  expect(await draw(ui)).not.toContain('実行中')
+  expect(await draw(ui)).not.toContain('⚡ 実行中')
   await $.turn.start({ text: 'hi', turnId: 't1' })
-  expect(await draw(ui)).toContain('実行中')
+  expect(await draw(ui)).toContain('⚡ 実行中')
   await $.turn.complete(done({ agentId: 'a1', reason: 'error' }))
-  expect(await draw(ui)).toContain('実行中')
-  expect(await draw(ui)).not.toContain('停止中')
+  expect(await draw(ui)).toContain('⚡ 実行中')
+  expect(await draw(ui)).not.toContain('💤 停止中')
   await $.tool.call({ tool: 'Bash', command: 'ls', agentId: 'a1' })
-  expect(await draw(ui)).not.toContain('実行中 Bash')
+  expect(await draw(ui)).not.toContain('⚡ 実行中 Bash')
   await ui.unmount()
 })
 
@@ -93,15 +93,15 @@ test('a running tool shows its name until the call settles; any tool counts; Bas
   gate.hold = new Promise<void>(resolve => (release = resolve))
   const bash = $.tool.call({ tool: 'Bash', command: 'ls' })
   await settle()
-  expect(await draw(ui)).toContain('実行中 Bash')
+  expect(await draw(ui)).toContain('⚡ 実行中 Bash')
   const other = $.tool.call({ tool: 'Grep', pattern: 'x' })
   await settle()
-  expect(await draw(ui)).toContain('実行中 Bash +1')
+  expect(await draw(ui)).toContain('⚡ 実行中 Bash +1')
   release()
   await Promise.all([bash, other])
   await settle()
   const after = await draw(ui)
-  expect(after).toContain('実行中')
+  expect(after).toContain('⚡ 実行中')
   expect(after.some(t => t.includes('Bash') || t.includes('Grep'))).toBe(false)
   expect(gate.seen.some(c => c.includes('status --porcelain'))).toBe(true)
   await ui.unmount()
@@ -114,7 +114,7 @@ test('turn.complete shows 停止中 with the last turn; error and aborted show t
   await $.turn.start({ text: 'hi', turnId: 't1' })
   await $.turn.complete(done({ durationMs: 102000, usage: { input_tokens: 1000, output_tokens: 234, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' } }))
   const t = await draw(ui)
-  expect(t).toContain('停止中')
+  expect(t).toContain('💤 停止中')
   expect(t).toContain('直近 1m42s')
   expect(t).toContain('1k tokens')
   expect(t).not.toContain('エラーで停止')
@@ -134,7 +134,7 @@ test('the branch and the uncommitted count show; with no repository that row is 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.start({ text: 'hi', turnId: 't1' })
   const t = await draw(ui)
-  expect(t).toContain('feat-x')
+  expect(t).toContain('🌿 feat-x')
   expect(t).toContain('未 commit 3')
   await ui.unmount()
 })
@@ -146,9 +146,9 @@ test('without a repository the branch row is absent but the run row is drawn', a
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.start({ text: 'hi', turnId: 't1' })
   const t = await draw(ui)
-  expect(t).toContain('実行中')
+  expect(t).toContain('⚡ 実行中')
   expect(t.some(x => x.startsWith('未 commit'))).toBe(false)
-  expect(t).not.toContain('feat-x')
+  expect(t).not.toContain('🌿 feat-x')
   await ui.unmount()
 })
 
@@ -162,8 +162,8 @@ test('the band is drawn above every tab', async ($, on) => {
     await ui.press({ key: id })
     await settle()
     const t = await draw(ui)
-    expect(t).toContain('実行中')
-    expect(t).toContain('feat-x')
+    expect(t).toContain('⚡ 実行中')
+    expect(t).toContain('🌿 feat-x')
   }
   await ui.unmount()
 })
@@ -265,8 +265,8 @@ test('empty rateLimits hides the limits but keeps the context', async ($, on) =>
   await settle()
   const t = await draw(ui)
   expect(t).toContain('58%')
-  expect(t).not.toContain('5時間枠')
-  expect(t).not.toContain('7日枠')
+  expect(t).not.toContain('⏳ 5時間枠')
+  expect(t).not.toContain('📅 7日枠')
   await ui.unmount()
 })
 
@@ -279,8 +279,8 @@ test('a throwing usage leaves the run row, the git row and the model', async ($,
   await $.turn.start({ text: 'hi', turnId: 't1' })
   await settle()
   const t = await draw(ui)
-  expect(t).toContain('実行中')
-  expect(t).toContain('feat-x')
+  expect(t).toContain('⚡ 実行中')
+  expect(t).toContain('🌿 feat-x')
   expect(t).toContain('claude-test-model')
   expect(t.some(x => x.includes(' / '))).toBe(false)
   await ui.unmount()
@@ -304,8 +304,8 @@ test('five_hour and seven_day show two limits', async ($, on) => {
   await $.turn.complete(done())
   await settle()
   const t = await draw(ui)
-  expect(t).toContain('5時間枠')
-  expect(t).toContain('7日枠')
+  expect(t).toContain('⏳ 5時間枠')
+  expect(t).toContain('📅 7日枠')
   expect(t).toContain('36%')
   expect(t).toContain('97%')
   expect(t).toContain('3h 0m')
@@ -885,7 +885,7 @@ test('the header shows model / effort from the /config row and the session direc
   expect(t).toContain('claude-test-model')
   expect(t).toContain('/')
   expect(t).toContain('high')
-  expect(t).toContain('D:/p')
+  expect(t).toContain('📁 D:/p')
   await ui.unmount()
 })
 
@@ -900,7 +900,7 @@ test('without an effort row in /config the header shows only the model and the d
   const t = await draw(ui)
   expect(t).toContain('claude-test-model')
   expect(t).not.toContain('high')
-  expect(t).toContain('D:/p')
+  expect(t).toContain('📁 D:/p')
   await ui.unmount()
 })
 
@@ -918,4 +918,93 @@ test('a failing /config read or session.cwd leaves the rest of the header alone'
   expect(t).toContain('claude-test-model')
   expect(t).not.toContain('/')
   await ui.unmount()
+})
+
+// ---- effort の探し方: /config の行 → CLAUDE_EFFORT → 設定ファイル ----
+
+function effortSources(on: any, opts: { rows?: unknown[]; env?: Record<string, string>; files?: Record<string, string> }) {
+  on('config.list', () => ({ value: opts.rows ?? [] }))
+  on('env.get', (_: any, e: any) => ({ value: opts.env?.[e.name] }))
+  on('fs.read', (_: any, e: any) => {
+    // Windows のエンジンは、パスの区切りを \ にそろえて渡す。
+    const text = opts.files?.[String(e.path).split(String.fromCharCode(92)).join('/')]
+    if (text === undefined) throw new Error('ENOENT')
+
+    return { value: text }
+  })
+}
+
+async function headerAfter($: any) {
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  await ui.unmount()
+
+  return t
+}
+
+test('the header prettifies the model id: claude-test-model stays, claude-sonnet-5-5 reads Sonnet 5.5', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {})
+  const t = await headerAfter($)
+  expect(t).toContain('claude-test-model')
+})
+
+test('effort falls back to the CLAUDE_EFFORT variable when /config has no effort row', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, { env: { CLAUDE_EFFORT: 'xhigh' } })
+  expect(await headerAfter($)).toContain('xhigh')
+})
+
+test('effort then falls back to the settings files: project local, project, then user', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    env: { USERPROFILE: 'C:/Users/me' },
+    files: {
+      'D:/p/.claude/settings.json': JSON.stringify({ effortLevel: 'medium' }),
+      'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }),
+    },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('medium')
+  expect(t).not.toContain('low')
+})
+
+test('the user settings file is read when no project file has an effort; CLAUDE_CONFIG_DIR wins over the home folder', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    env: { USERPROFILE: 'C:/Users/me', CLAUDE_CONFIG_DIR: 'E:/cfg' },
+    files: { 'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }), 'E:/cfg/settings.json': JSON.stringify({ effortLevel: 'max' }) },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('max')
+  expect(t).not.toContain('low')
+})
+
+test('a /config row wins over the variable and the files; broken files and non-string values are skipped', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    rows: [{ key: 'effort', label: 'Effort', value: 'high' }],
+    env: { CLAUDE_EFFORT: 'low', USERPROFILE: 'C:/Users/me' },
+    files: { 'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }) },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('high')
+  expect(t).not.toContain('low')
+})
+
+test('broken JSON or a non-string effortLevel leaves effort out', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, { env: { USERPROFILE: 'C:/Users/me' }, files: { 'C:/Users/me/.claude/settings.json': '{ not json', 'D:/p/.claude/settings.json': JSON.stringify({ effortLevel: 5 }) } })
+  const t = await headerAfter($)
+  expect(t).toContain('claude-test-model')
+  expect(t).not.toContain('/')
 })

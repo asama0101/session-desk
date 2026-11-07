@@ -609,12 +609,12 @@ test('local and remote are labelled: ローカル shows the folder, リモート
   await start($)
   const ui = await open($, e.calls)
   const lines = await texts(ui)
-  expect(lines).toContain('ローカル')
+  expect(lines).toContain('💻 ローカル')
   expect(lines).toContain('D:/p')
-  expect(lines).toContain('リモート')
+  expect(lines).toContain('🌐 リモート')
   expect(lines).toContain('origin')
   // ローカルの行が先、リモートの行がその次。
-  expect(lines.indexOf('ローカル')).toBeLessThan(lines.indexOf('リモート'))
+  expect(lines.indexOf('💻 ローカル')).toBeLessThan(lines.indexOf('🌐 リモート'))
   await ui.unmount()
 })
 

@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, formatDuration, formatTokens, modelColor, usageColor } from './band'
+import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, ICON_CELLS, ICONS, formatDuration, formatTokens, modelColor, prettyModel, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -97,12 +97,12 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const runLine =
     a.run.state === 'running' ? (
       <Box gap={2} flexWrap="wrap">
-        <Text color="suggestion">{a.run.tool === null ? '実行中' : clean(`実行中 ${a.run.tool}`)}</Text>
+        <Text color="suggestion">{a.run.tool === null ? `${ICONS.running} 実行中` : clean(`${ICONS.running} 実行中 ${a.run.tool}`)}</Text>
         {a.run.elapsedMs !== null && <Text>{formatDuration(a.run.elapsedMs)}</Text>}
       </Box>
     ) : a.run.state === 'stopped' ? (
       <Box gap={2} flexWrap="wrap">
-        <Text dimColor>停止中</Text>
+        <Text dimColor>{`${ICONS.stopped} 停止中`}</Text>
         {a.lastTurn !== null && <Text>{`直近 ${formatDuration(a.lastTurn.durationMs)}`}</Text>}
         {a.lastTurn !== null && a.lastTurn.tokens > 0 && <Text>{`${formatTokens(a.lastTurn.tokens)} tokens`}</Text>}
         {a.stop !== null && <Text color={a.stop === 'aborted' ? 'warning' : 'error'}>{STOP_TEXT[a.stop]}</Text>}
@@ -139,7 +139,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       <Box flexDirection="column">
         {ctx !== null && (
           <Box justifyContent="space-between">
-            <Text dimColor>コンテキスト</Text>
+            <Text dimColor>{`${ICONS.context} コンテキスト`}</Text>
             <Box gap={2}>
               {pct(ctx.percent, true)}
               {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && (
@@ -200,7 +200,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       <Box gap={3} flexWrap="wrap">
         {a.limits.map(l => (
           <Box key={`limit-${l.label}`} gap={1}>
-            <Text dimColor>{l.label}</Text>
+            <Text dimColor>{`${l.label === '5時間枠' ? ICONS.fiveHour : ICONS.sevenDay} ${l.label}`}</Text>
             {limitBar(l.percent, narrow ? LIMIT_BAR_WIDTH_NARROW : LIMIT_BAR_WIDTH)}
             {pct(l.percent)}
             {l.remaining !== null && <Text dimColor>{l.remaining}</Text>}
@@ -212,7 +212,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const git =
     a.git !== null ? (
       <Box gap={2} flexWrap="wrap">
-        <Text color={BRANCH_COLOR}>{a.git.branch === null ? '(detached)' : clean(a.git.branch)}</Text>
+        <Text color={BRANCH_COLOR}>{`${ICONS.branch} ${a.git.branch === null ? '(detached)' : clean(a.git.branch)}`}</Text>
         {a.git.dirtyCount !== null && <Text>{`未 commit ${a.git.dirtyCount}`}</Text>}
       </Box>
     ) : null
@@ -222,7 +222,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
     st === null ? null : (
       <Box flexDirection="column">
         <Box gap={2} flexWrap="wrap">
-          <Text bold>提案</Text>
+          <Text bold>{`${ICONS.suggest} 提案`}</Text>
           <Text>{clean(st.reason)}</Text>
         </Box>
         {st.items.map((item, i) => {
@@ -259,7 +259,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       <Box flexDirection="column">
         {a.goal !== null && (
           <Box gap={2} flexWrap="wrap">
-            <Text dimColor>ゴール</Text>
+            <Text dimColor>{`${ICONS.goal} ゴール`}</Text>
             <Text>{clean(a.goal)}</Text>
           </Box>
         )}
@@ -291,8 +291,9 @@ export function renderBand(ui: Ui, a: BandArgs) {
               <Text bold>Session</Text>
               {a.model !== null && (
                 <Box gap={1}>
+                  <Text>{ICONS.model}</Text>
                   <Text bold color={modelColor(a.model)}>
-                    {clean(a.model)}
+                    {clean(prettyModel(a.model))}
                   </Text>
                   {a.effort !== null && <Text dimColor>/</Text>}
                   {a.effort !== null && (
@@ -304,7 +305,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
               )}
             </Box>
           )}
-          {hasHead && a.cwd !== null && <Text dimColor>{clean(fitTail(a.cwd, Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2)))}</Text>}
+          {hasHead && a.cwd !== null && <Text dimColor>{`${ICONS.dir} ${clean(fitTail(a.cwd, Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2 - ICON_CELLS)))}`}</Text>}
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">
               {n > 0 && <Box marginY={1}>{thin}</Box>}

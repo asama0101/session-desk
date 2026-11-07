@@ -11,6 +11,9 @@ import {
   formatTokens,
   limitRows,
   modelColor,
+  prettyModel,
+  ICONS,
+  ICON_CELLS,
   fitTail,
   EFFORT_COLORS,
   nextAgentsOpen,
@@ -227,4 +230,30 @@ test('EFFORT_COLORS: low grey, medium plain, high cyan, xhigh and max purple', a
   expect(EFFORT_COLORS.high).toBe(BRANCH_COLOR)
   expect(EFFORT_COLORS.low).not.toBe(EFFORT_COLORS.high)
   expect(EFFORT_COLORS.xhigh).toBe(EFFORT_COLORS.max)
+})
+
+test('ICONS: every icon is one emoji that terminals draw 2 cells wide (no text-or-emoji characters), all different', async () => {
+  const icons = Object.values(ICONS)
+  expect(new Set(icons).size).toBe(icons.length)
+  for (const icon of icons) {
+    expect([...icon]).toHaveLength(1)
+    // 絵文字の面（U+1F000 以上）か、絵文字が標準の U+23F3 と U+26A1。U+FE0F を後ろに付けないと絵文字にならない文字は使わない。
+    const point = icon.codePointAt(0) as number
+    expect(point >= 0x1f000 || point === 0x23f3 || point === 0x26a1).toBe(true)
+  }
+  expect(ICON_CELLS).toBe(3)
+})
+
+test('prettyModel turns a model id into the name people read; unknown forms stay as they are', async () => {
+  expect(prettyModel('claude-sonnet-5-5')).toBe('Sonnet 5.5')
+  expect(prettyModel('claude-opus-5-5')).toBe('Opus 5.5')
+  expect(prettyModel('claude-fable-5-1')).toBe('Fable 5.1')
+  expect(prettyModel('claude-haiku-5-5')).toBe('Haiku 5.5')
+  expect(prettyModel('claude-opus-4-1-20250805')).toBe('Opus 4.1')
+  expect(prettyModel('claude-3-5-sonnet-20241022')).toBe('Sonnet 3.5')
+  expect(prettyModel('claude-sonnet-5-5[1m]')).toBe('Sonnet 5.5 (1M)')
+  expect(prettyModel('claude-sonnet-5')).toBe('Sonnet 5')
+  expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
+  expect(prettyModel('gpt-x')).toBe('gpt-x')
+  expect(prettyModel('')).toBe('')
 })
