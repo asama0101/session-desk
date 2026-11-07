@@ -12,7 +12,7 @@ export type BandArgs = {
   stop: 'error' | 'refusal' | 'aborted' | null
   agents: { running: number; rows: AgentRow[]; open: boolean }
   model: string | null
-  context: { percent: number; tokens: number; window: number; parts: { id: CategoryId; tokens: number }[] } | null
+  context: { percent: number; tokens: number | null; window: number | null; parts: { id: CategoryId; tokens: number }[] } | null
   breakdown: {
     open: boolean
     rows: { id: CategoryId; name: string; tokens: number; percent: number; detail: { name: string; tokens: number }[] | null; detailOpen: boolean }[]
@@ -111,7 +111,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       <Text dimColor>コンテキスト</Text>
       {bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BAR_WIDTH)}
       {pct(ctx.percent)}
-      <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>
+      {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
     </Box>
   )
 

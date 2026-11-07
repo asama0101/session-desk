@@ -164,7 +164,7 @@ const cat = (name: string, kind: string, tokens: number) => ({ name, kind, token
 
 // usage / model / agent.list の差し替え。calls に usage の引数を残す。
 function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boolean; throwList?: boolean } = {}) {
-  const state = { calls: [] as any[], list: opts.list ?? [] }
+  const state = { calls: [] as any[], list: opts.list ?? [], gate: null as null | Promise<void> }
   on('session.usage', (_: any, e: any) => {
     state.calls.push(e)
     if (opts.throwUsage) throw new Error('usage failed')
@@ -172,7 +172,8 @@ function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boole
     return { value: opts.usage ?? { startedAt: 0, context: { window: 200000, tokens: 116000, percent: 58 }, rateLimits: [] } }
   })
   on('session.model', () => ({ value: 'claude-test-model' }))
-  on('agent.list', () => {
+  on('agent.list', async () => {
+    await state.gate
     if (opts.throwList) throw new Error('no session is bound')
 
     return { value: state.list }
@@ -361,5 +362,67 @@ test('agent.list throwing hides the agents and nothing else breaks', async ($, o
   const t = await draw(ui)
   expect(t).not.toContain('サブエージェント')
   expect(t).toContain('58%')
+  await ui.unmount()
+})
+
+test('tokens absent: the percent shows but no tokens text; window absent: no 0 / 0', async ($, on) => {
+  engine(on)
+  const data = fakeData(on, { usage: { startedAt: 0, context: { window: 200000, percent: 58 }, rateLimits: [] } })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  let t = await draw(ui)
+  expect(t).toContain('58%')
+  expect(t.some(x => x.includes(' / '))).toBe(false)
+  expect(data.calls.length).toBeGreaterThan(0)
+  await ui.unmount()
+})
+
+test('window absent: the percent shows and there is no 0 / 0', async ($, on) => {
+  engine(on)
+  fakeData(on, { usage: { startedAt: 0, context: { tokens: 1000, percent: 58 }, rateLimits: [] } })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('58%')
+  expect(t.some(x => x.includes('/ '))).toBe(false)
+  await ui.unmount()
+})
+
+test('tokens and window both present show as before', async ($, on) => {
+  engine(on)
+  fakeData(on, { usage: { startedAt: 0, context: { tokens: 860000, window: 1000000, percent: 86 }, rateLimits: [] } })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  expect(await draw(ui)).toContain('860k / 1M')
+  await ui.unmount()
+})
+
+test('a manual close wins against a fetch that was already in flight', async ($, on) => {
+  engine(on)
+  const data = fakeData(on, { list: [agent('running')] })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  expect(await draw(ui)).toContain('look around')
+  let release = () => {}
+  data.gate = new Promise<void>(resolve => (release = resolve))
+  await $.turn.start({ text: 'hi', turnId: 't2' })
+  await settle()
+  await ui.press({ key: 'band-agents' })
+  await settle()
+  expect(await draw(ui)).not.toContain('look around')
+  data.gate = null
+  release()
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('サブエージェント')
+  expect(t).not.toContain('look around')
   await ui.unmount()
 })

@@ -50,7 +50,7 @@ const usageView = atom(
   { plugin: 'session-desk', key: 'usageView' } as const,
   {
     model: null as string | null,
-    context: null as { percent: number; tokens: number; window: number } | null,
+    context: null as { percent: number; tokens: number | null; window: number | null } | null,
     rateLimits: [] as { kind: string; percentUsed: number; resetsAt?: string }[],
     breakdown: null as {
       categories: { name: string; kind: string; tokens: number }[]
@@ -200,11 +200,10 @@ async function fetchBandData($: any, _exact: boolean): Promise<void> {
 
     const ctx = usage?.context
     const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
-    const window = typeof ctx?.window === 'number' ? ctx.window : 0
     const b = ctx?.breakdown
     await update($, usageView, () => ({
       model,
-      context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : Math.round((percent * window) / 100), window },
+      context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
       rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
       breakdown:
         b === undefined || b === null || !Array.isArray(b.categories)
@@ -221,12 +220,16 @@ async function fetchBandData($: any, _exact: boolean): Promise<void> {
             },
     }))
 
-    const prev = await read($, agentsView)
-    const ui = await read($, bandUi)
-    const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(prev.startedAt)), Date.now())
-    const opened = nextAgentsOpen({ running: prev.running, closedByUser: ui.agentsClosedByUser }, summary.running)
-    await update($, agentsView, cur => ({ ...cur, running: summary.running, rows: summary.rows, open: opened.open }))
-    await update($, bandUi, cur => ({ ...cur, agentsClosedByUser: opened.closedByUser }))
+    // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
+    let closed = false
+    await update($, agentsView, cur => {
+      const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
+      const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
+      closed = summary.running > 0 && !opened.open
+
+      return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
+    })
+    await update($, bandUi, cur => ({ ...cur, agentsClosedByUser: closed }))
   } catch {
     // atom を更新できなくても、フックを失敗させない。
   }
