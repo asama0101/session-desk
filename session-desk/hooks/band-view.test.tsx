@@ -218,7 +218,9 @@ test('the panel has no outer frame: it is headed Session + model; sections are s
   const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 }, steps, between: { type: 'Text', props: {}, children: ['TABS'] } as any })
   expect(find(tree, n => n.props?.borderStyle !== undefined)).toHaveLength(0)
   expect(textsOf(tree).slice(0, 2)).toEqual(['Session', 'Opus 5.5'])
-  // 見出しと最初の段のあいだに線は無い（1 行あけるだけ）。段と段のあいだに細い線、提案の前に二重線。
+  expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginTop).toBeUndefined()
+  expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginY).toBeUndefined()
+  // 見出しと最初の段のあいだに線も空きも無い（見出しは最初の段の一部）。段と段のあいだに細い線、提案の前に二重線。
   expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(3)
   expect(textsOf(tree).filter(x => /^═+$/.test(x))).toHaveLength(1)
   const flat = JSON.stringify(tree)
@@ -240,8 +242,7 @@ test('every rule has one blank row above and below it', async () => {
 
 test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
   const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
-  // 見出しの下の 1 行（段そのものの marginTop）は数えない。
-  const gaps = find(tree, n => n.props?.marginTop === 1 && n.props?.key !== 'sec-context')
+  const gaps = find(tree, n => n.props?.marginTop === 1)
   expect(gaps).toHaveLength(2)
   expect(textsOf(gaps[0])).toContain('Messages')
   expect(textsOf(gaps[1])).toContain('概算')
