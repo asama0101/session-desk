@@ -181,7 +181,7 @@ export function forkPrompt(prevGoal: string | null): string {
 
 // 取り返しのつかない操作を思わせる語。全角は半角に直してから見る。
 export function isRiskyStep(text: string): boolean {
-  return /削除|消去|push|force|reset|\brm\b|\bdrop\b|--no-verify/i.test(text.normalize('NFKC'))
+  return /削除|消去|delete|overwrite|push|force|reset|\brm\b|\bdrop\b|--no-verify/i.test(text.normalize('NFKC'))
 }
 
 // ---- 実行状態 ----
@@ -227,9 +227,11 @@ export function summarizeAgents(
   startedAt: ReadonlyMap<string, number>,
   nowMs: number,
 ): { running: number; rows: AgentRow[] } {
+  // 完了した行は、経過時間を持たない（終わったあとも伸び続けないように）。
   const rows = list.map(a => {
     const t = startedAt.get(a.id)
-    return { id: a.id, type: a.type, description: a.description, state: agentState(a.status), elapsedMs: t === undefined ? null : nowMs - t }
+    const state = agentState(a.status)
+    return { id: a.id, type: a.type, description: a.description, state, elapsedMs: t === undefined || state === 'done' ? null : nowMs - t }
   })
   return { running: rows.filter(r => r.state === 'running').length, rows }
 }

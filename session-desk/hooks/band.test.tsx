@@ -156,6 +156,13 @@ test('isRiskyStep: flags destructive words, including full-width forms', async (
   expect(isRiskyStep('テストを実行する')).toBe(false)
 })
 
+test('isRiskyStep: delete and overwrite, any case and full-width', async () => {
+  for (const t of ['Delete the branch', 'overwrite the file', 'ＤＥＬＥＴＥ する', 'OVERWRITE で保存']) {
+    expect(isRiskyStep(t)).toBe(true)
+  }
+  expect(isRiskyStep('ファイルを読む')).toBe(false)
+})
+
 test('RunState: toolLabel shows the oldest tool and the extra count', async () => {
   let s = startTurn(1000)
   expect(s.startedAt).toBe(1000)
@@ -171,13 +178,15 @@ test('summarizeAgents: counts only running and pending', async () => {
   const mk = (id: string, status: string) => ({ id, type: 't', description: 'd', status })
   const r = summarizeAgents(
     [mk('a', 'running'), mk('b', 'pending'), mk('c', 'waiting'), mk('d', 'idle'), mk('e', 'completed'), mk('f', 'failed'), mk('g', 'killed')],
-    new Map([['a', 1000]]),
+    new Map([['a', 1000], ['e', 2000]]),
     4000,
   )
   expect(r.running).toBe(2)
   expect(r.rows.map(x => x.state)).toEqual(['running', 'running', 'waiting', 'waiting', 'done', 'done', 'done'])
   expect(r.rows[0].elapsedMs).toBe(3000)
   expect(r.rows[1].elapsedMs).toBe(null)
+  // 完了した行は、開始時刻があっても経過時間を持たない。
+  expect(r.rows[4].elapsedMs).toBe(null)
 })
 
 test('nextAgentsOpen: opens on 0 to 1, respects a manual close, resets at 0', async () => {

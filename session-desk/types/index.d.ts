@@ -34,6 +34,7 @@ declare module 'claude-code' {
           memoryFiles: { name: string; tokens: number }[]
           skills: { name: string; tokens: number }[]
         } | null
+        exactHeld: boolean
       }
       agentsView: {
         running: number
@@ -41,7 +42,7 @@ declare module 'claude-code' {
         open: boolean
         startedAt: Record<string, number>
       }
-      bandUi: { breakdown: boolean; exact: boolean; agentsClosedByUser: boolean; detail: string[] }
+      bandUi: { breakdown: boolean; exact: boolean; detail: string[] }
       branchSel: string | null
       branchAct: { dismissed: string[]; confirm: string | null }
     }

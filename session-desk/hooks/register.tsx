@@ -62,6 +62,8 @@ const usageView = atom(
       memoryFiles: { name: string; tokens: number }[]
       skills: { name: string; tokens: number }[]
     } | null,
+    // 「正確に数える」の内訳を出しているか。真のあいだは、概算の取得で breakdown を上書きしない。次の turn.start で戻す。
+    exactHeld: false,
   },
 )
 const agentsView = atom(
@@ -70,13 +72,16 @@ const agentsView = atom(
 )
 const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
-  { breakdown: false, exact: false, agentsClosedByUser: false, detail: [] as string[] },
+  { breakdown: false, exact: false, detail: [] as string[] },
 )
+// 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
+const bandFetch = { running: false, again: false }
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
 let toolSeq = 0
 // 自分の fork の印。id は走っている fork の番号（なければ null）。userSent は、fork の開始後に prompt.submit があったか（送信元は問わない）。
 // fork の最中の turn.start・turn.complete・tool.call は、prompt.submit のあとの turn.start までは帯に反映しない。session.start で戻す。
 const forkGuard = { seq: 0, id: null as number | null, userSent: false }
+const FORK_TIMEOUT_MS = 30_000
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
 const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
@@ -178,8 +183,9 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
 }
 
 // モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。
-// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。
-async function fetchBandData($: any, exact: boolean): Promise<void> {
+// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。full が失敗したときだけ偽を返す。
+async function fetchBandData($: any, exact: boolean): Promise<boolean> {
+  let fullOk = exact
   try {
     let usage: any = null
     try {
@@ -187,6 +193,7 @@ async function fetchBandData($: any, exact: boolean): Promise<void> {
     } catch {
       // 取れなければ、コンテキストと上限は出さない。正確に数える失敗のときは、概算で読み直して帯を保つ。
       if (exact) {
+        fullOk = false
         try {
           usage = await $.session.usage({ breakdown: 'summary' })
         } catch {
@@ -212,12 +219,15 @@ async function fetchBandData($: any, exact: boolean): Promise<void> {
     const ctx = usage?.context
     const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
     const b = ctx?.breakdown
-    await update($, usageView, () => ({
+    // 正確に数えた内訳を出しているあいだは、概算の取得で内訳を上書きしない（書く時点の atom で決める）。
+    await update($, usageView, cur => ({
       model,
       context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
       rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
-      breakdown:
-        b === undefined || b === null || !Array.isArray(b.categories)
+      exactHeld: fullOk || cur.exactHeld,
+      breakdown: !fullOk && cur.exactHeld
+        ? cur.breakdown
+        : b === undefined || b === null || !Array.isArray(b.categories)
           ? null
           : {
               categories: b.categories.map((c: any) => ({ name: String(c.name), kind: String(c.kind), tokens: Number(c.tokens) || 0 })),
@@ -232,32 +242,71 @@ async function fetchBandData($: any, exact: boolean): Promise<void> {
     }))
 
     // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
-    let closed = false
     await update($, agentsView, cur => {
       const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
       const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
-      closed = summary.running > 0 && !opened.open
 
       return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
     })
-    await update($, bandUi, cur => ({ ...cur, agentsClosedByUser: closed }))
   } catch {
     // atom を更新できなくても、フックを失敗させない。
+  }
+
+  return fullOk || !exact
+}
+
+// 概算の取得を 1 本にまとめる。取得中に来た要求は、終わった直後の 1 回にまとめる（古い結果が新しい結果を上書きしない）。
+async function fetchSummary($: any): Promise<void> {
+  if (bandFetch.running) {
+    bandFetch.again = true
+
+    return
+  }
+  bandFetch.running = true
+  try {
+    do {
+      bandFetch.again = false
+      await fetchBandData($, false)
+    } while (bandFetch.again)
+  } finally {
+    bandFetch.running = false
   }
 }
 
 // 取得は待たない。フックの結果に影響させない。
-function refetch($: any, exact = false) {
-  void fetchBandData($, exact).catch(() => {})
+function refetch($: any) {
+  void fetchSummary($).catch(() => {})
 }
 
-// 「正確に数える」: full で 1 回だけ読み、成功しても失敗しても exact を戻す。
+// 10 秒ごとの更新。パネルが置かれていないときは、帯の取得をしない（Git の更新は refreshNow が自分で確かめる）。
+async function tick($: any, desk: Desk): Promise<void> {
+  desk.refresher?.request(Date.now() >= desk.ghNextAt)
+  const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
+  if (panes.some(pane => pane.id === PANE && pane.isPlaced)) {
+    refetch($)
+  }
+}
+
+// 「正確に数える」: full で 1 回だけ読み、成功しても失敗しても exact を戻す。数えている間の押下は無視する。
 async function countExactly($: any) {
+  let mine = false
   try {
-    await update($, bandUi, v => ({ ...v, exact: true }))
-    await fetchBandData($, true)
+    await update($, bandUi, v => {
+      // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
+      mine = !v.exact
+
+      return mine ? { ...v, exact: true } : v
+    })
   } catch {
-    // atom を更新できなくても、フックを失敗させない。
+    return
+  }
+  if (!mine) {
+    return
+  }
+  try {
+    if (!(await fetchBandData($, true))) {
+      $.ui.toast('正確な数え直しに失敗しました')
+    }
   } finally {
     await update($, bandUi, v => ({ ...v, exact: false })).catch(() => {})
   }
@@ -275,7 +324,6 @@ async function toggleDetail($: any, id: string) {
 async function toggleAgents($: any) {
   const cur = await read($, agentsView)
   await update($, agentsView, v => ({ ...v, open: !cur.open }))
-  await update($, bandUi, v => ({ ...v, agentsClosedByUser: cur.open }))
 }
 
 // 内訳のカテゴリを、帯の色分けの区分ごとに合計する（空きは除く）。
@@ -303,12 +351,12 @@ const CATEGORY_NAMES: Record<CategoryId, string> = {
 }
 
 // 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
-function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }): BandArgs['breakdown'] {
+function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }, exact: boolean): BandArgs['breakdown'] {
   if (bd === null) {
     return null
   }
   if (!ui.breakdown) {
-    return { open: false, rows: [], compactIn: null, threshold: null }
+    return { open: false, exact, rows: [], compactIn: null, threshold: null }
   }
   const sums = new Map<CategoryId, number>()
   let used = 0
@@ -341,6 +389,7 @@ function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }): B
 
   return {
     open: true,
+    exact,
     rows,
     compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
     threshold: bd.autoCompactThreshold ?? null,
@@ -410,7 +459,14 @@ async function askFork($: any, turnId: string): Promise<void> {
     const prevGoal = (await read($, band)).goal
     // 費用を抑えるため、effort は low にする。
     const req = { prompt: forkPrompt(prevGoal), effort: 'low' as const }
-    const result = await $.model.fork(req)
+    // 返らない fork で印が残らないように、30 秒で未回答として扱う（トーストは出さない）。
+    const stop = new AbortController()
+    let result: any
+    try {
+      result = await Promise.race([$.model.fork(req), $.clock.sleep(FORK_TIMEOUT_MS, { signal: stop.signal }).then(() => null)])
+    } finally {
+      stop.abort()
+    }
     if (result?.isAnswered !== true) {
       return
     }
@@ -493,17 +549,15 @@ export const register: Register = on => {
   const desk: Desk = { refresher: null, timer: null, ghNextAt: 0, ghFailures: 0, failed: false }
 
   on('tool.call', async ($, e, next) => {
-    if (forkGuard.id !== null) {
-      return next(e)
-    }
     const tool = e.tool as string
     const id = ++toolSeq
-    // 帯に出すのはメインのやり取りのツールだけ（サブエージェントのものは除く）。
-    const shown = (e as { agentId?: unknown }).agentId === undefined
+    // 帯に出して取り直すのは、メインのやり取りのツールだけ（サブエージェントのものと、自分の fork の最中は除く）。
+    // fork の最中でも、Git の更新の要求は出す。
+    const shown = forkGuard.id === null && (e as { agentId?: unknown }).agentId === undefined
     if (shown) {
       await update($, band, b => ({ ...b, run: addTool(b.run, id, tool) }))
+      refetch($)
     }
-    refetch($)
     const refreshes = ['Bash', 'Edit', 'Write'].includes(tool)
     const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
 
@@ -514,7 +568,7 @@ export const register: Register = on => {
           desk.refresher?.request(wantsGh(command))
         }
         if (shown) {
-          void update($, band, b => ({ ...b, run: removeTool(b.run, id) }))
+          void update($, band, b => ({ ...b, run: removeTool(b.run, id) })).catch(() => {})
         }
       },
     )
@@ -530,6 +584,8 @@ export const register: Register = on => {
     }
     if (e.agentId === undefined) {
       await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
+      // 正確に数えた内訳は、新しいターンでは古くなるので、概算に戻す。
+      await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false } : v)).catch(() => {})
     }
     refetch($)
 
@@ -573,6 +629,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     forkGuard.id = null
     forkGuard.userSent = false
+    bandFetch.running = false
+    bandFetch.again = false
     desk.timer?.cancel()
     desk.refresher = createRefresher({
       // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
@@ -593,8 +651,7 @@ export const register: Register = on => {
     })
     try {
       desk.timer = $.clock.every(10_000, () => {
-        desk.refresher?.request(Date.now() >= desk.ghNextAt)
-        refetch($)
+        void tick($, desk).catch(() => {})
       })
     } catch {
       // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
@@ -794,7 +851,7 @@ export const register: Register = on => {
           agents: { running: ag.running, rows: ag.rows, open: ag.open },
           model: u.model,
           context: u.context === null ? null : { ...u.context, parts: partsOf(u.breakdown) },
-          breakdown: breakdownArgs(u.breakdown, await read($, bandUi)),
+          breakdown: breakdownArgs(u.breakdown, await read($, bandUi), u.exactHeld),
           limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。

@@ -90,9 +90,15 @@ test('agents: none shows nothing; open lists rows with colored marks; closed hid
   for (const w of ['Explore', '調査', 'Plan', '設計']) expect(t).toContain(w)
   expect(t).toContain('実行中')
   expect(t).toContain('待機')
-  expect(textsOf(draw({ agents: { running: 1, rows: [{ ...ROWS[0], state: 'done' }], open: true } }))).toContain('完了')
   expect(colorOf(open, '●')).toBe('blue')
-  expect(colorOf(open, '○')).toBe('gray')
+  expect(colorOf(open, '◌')).toBe('gray')
+  // 完了は灰色の ○。経過時間は出さない（値が渡っても描かない）。
+  const done = draw({ agents: { running: 1, rows: [ROWS[0], { ...ROWS[0], id: 'c', state: 'done', elapsedMs: 9000 }], open: true } })
+  expect(textsOf(done)).toContain('完了')
+  expect(colorOf(done, '○')).toBe('gray')
+  expect(textsOf(done)).toContain('0m05s')
+  expect(textsOf(done)).not.toContain('0m09s')
+  expect(textsOf(open)).not.toContain('○')
   expect(labelsOf(open)).toContain('▴ 閉じる')
   const closed = draw({ agents: { running: 2, rows: ROWS, open: false } })
   expect(textsOf(closed)).not.toContain('Explore')
@@ -123,6 +129,7 @@ test('limits, git, and omitted lines', async () => {
 
 const BREAKDOWN = (open: boolean, compact: number | null = 40_000) => ({
   open,
+  exact: false,
   compactIn: compact,
   threshold: 900_000,
   rows: [
@@ -164,6 +171,13 @@ test('breakdown closed hides rows; open shows rows, 概算, exact button, detail
   expect(at('MCP tools')).toBeLessThan(at('自動 compact まで'))
   expect(at('自動 compact まで')).toBeLessThan(at('概算'))
   expect(at('概算')).toBeLessThan(at('band-exact'))
+})
+
+test('an exact breakdown says 正確 instead of 概算, and the button stays', async () => {
+  const exact = draw({ breakdown: { ...BREAKDOWN(true), exact: true } })
+  expect(textsOf(exact)).toContain('正確')
+  expect(textsOf(exact)).not.toContain('概算')
+  expect(labelsOf(exact)).toContain('正確に数える')
 })
 
 test('the breakdown bar is drawn only when open: 32 cells wide, 16 when columns < 40', async () => {

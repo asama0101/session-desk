@@ -22,13 +22,20 @@ const settle = async () => {
 }
 
 // エンジンの代わり。tool.call は gate が立っている間、完了を待たせる。
-function engine(on: any, status = '?? a\0?? b\0?? c\0') {
-  const gate = { hold: null as null | Promise<void>, seen: [] as string[] }
+// opts.ticks: clock.every の周期を、その回数だけ通してから拒否する（拒否で周期が止まる）。opts.placed: パネルが置かれているか。
+function engine(on: any, status = '?? a\0?? b\0?? c\0', opts: { ticks?: number; placed?: boolean } = {}) {
+  const gate = { hold: null as null | Promise<void>, seen: [] as string[], toasts: [] as string[] }
+  let ticks = opts.ticks ?? 0
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
+  on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: opts.placed ?? true }] }))
   on('session.cwd', () => ({ value: 'D:/p' }))
-  on('clock.every', () => ({ deny: 'test: no timers' }))
+  on('ui.toast', (_: any, e: any) => {
+    gate.toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('clock.every', () => (ticks-- > 0 ? { value: undefined } : { deny: 'test: no timers' }))
   on('clock.sleep', () => ({ value: undefined }))
   on('process.run', (_: any, e: any) => {
     const key = e.argv.slice(2).join(' ')
@@ -165,9 +172,11 @@ const cat = (name: string, kind: string, tokens: number) => ({ name, kind, token
 
 // usage / model / agent.list の差し替え。calls に usage の引数を残す。
 function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boolean; throwList?: boolean } = {}) {
-  const state = { calls: [] as any[], list: opts.list ?? [], gate: null as null | Promise<void> }
-  on('session.usage', (_: any, e: any) => {
+  // usageGate: 立っている間、usage の返答を待たせる（呼ばれた記録は先に残す）。
+  const state = { calls: [] as any[], list: opts.list ?? [], gate: null as null | Promise<void>, usageGate: null as null | Promise<void> }
+  on('session.usage', async (_: any, e: any) => {
     state.calls.push(e)
+    await state.usageGate
     if (opts.throwUsage) throw new Error('usage failed')
 
     if (typeof opts.usage === 'function') return { value: opts.usage(e) }
@@ -590,8 +599,8 @@ test('正確に数える makes exactly one full call; the next fetch is summary 
   await ui.unmount()
 })
 
-test('a failing full call does not break the band, and later fetches are summary', async ($, on) => {
-  engine(on)
+test('a failing full call shows a toast, keeps 概算, and later fetches are summary', async ($, on) => {
+  const gate = engine(on)
   const calls: any[] = []
   fakeData(on, {
     usage: (e: any) => {
@@ -613,6 +622,9 @@ test('a failing full call does not break the band, and later fetches are summary
   // full は 1 回だけ。失敗したら概算で読み直して、帯は消えない。
   expect(calls.map(c => c.breakdown)).toEqual(['full', 'summary'])
   expect(await labels(ui)).toContain('正確に数える')
+  expect(gate.toasts).toEqual(['正確な数え直しに失敗しました'])
+  expect(await draw(ui)).toContain('概算')
+  expect(await draw(ui)).toContain('500k')
   await $.turn.start({ text: 'hi', turnId: 't2' })
   await settle()
   expect(calls.length).toBeGreaterThan(1)
@@ -649,5 +661,147 @@ test('the ▸ of MCP, memory and skills rows shows each item, biggest first, and
   t = await draw(ui)
   expect(t).not.toContain('srv / big')
   expect(t).toContain('CLAUDE.md')
+  await ui.unmount()
+})
+
+// ---- 最終レビューの修正: 取得のまとめ方と「正確に数える」 ----
+
+test('a sub-agent tool.call does not fetch the usage', async ($, on) => {
+  engine(on)
+  const data = fakeData(on)
+  await start($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await settle()
+  data.calls.length = 0
+  await $.tool.call({ tool: 'Grep', pattern: 'x', agentId: 'a1' })
+  await settle()
+  expect(data.calls.length).toBe(0)
+})
+
+test('many events while a fetch runs make at most one more fetch', async ($, on) => {
+  engine(on)
+  const data = fakeData(on)
+  await start($)
+  await settle()
+  data.calls.length = 0
+  let release = () => {}
+  data.usageGate = new Promise<void>(resolve => (release = resolve))
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  for (let i = 0; i < 5; i++) await $.tool.call({ tool: 'Grep', pattern: String(i) })
+  await $.agent.spawn({ prompt: 'p' })
+  await settle()
+  expect(data.calls.length).toBe(1)
+  data.usageGate = null
+  release()
+  await settle()
+  expect(data.calls.length).toBe(2)
+})
+
+test('an older slow fetch cannot overwrite a newer one', async ($, on) => {
+  engine(on)
+  let n = 0
+  let release = () => {}
+  const first = new Promise<void>(resolve => (release = resolve))
+  on('session.usage', async () => {
+    const mine = ++n
+    if (mine === 1) await first
+
+    return { value: { startedAt: 0, context: { window: 200000, percent: mine === 1 ? 11 : 22 }, rateLimits: [] } }
+  })
+  on('session.model', () => ({ value: 'm' }))
+  on('agent.list', () => ({ value: [] }))
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.tool.call({ tool: 'Grep', pattern: 'x' })
+  await settle()
+  release()
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('22%')
+  expect(t).not.toContain('11%')
+  await ui.unmount()
+})
+
+test('the 10 s timer does not fetch the usage while the pane is not placed', async ($, on) => {
+  engine(on, undefined, { ticks: 1, placed: false })
+  const data = fakeData(on)
+  await start($)
+  await settle()
+  expect(data.calls.length).toBe(0)
+})
+
+test('the 10 s timer fetches the usage while the pane is placed', async ($, on) => {
+  engine(on, undefined, { ticks: 1, placed: true })
+  const data = fakeData(on)
+  await start($)
+  await settle()
+  expect(data.calls.length).toBe(1)
+})
+
+// 内訳を開くまで進める。
+async function openBreakdown($: any) {
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  await ui.press({ key: 'band-breakdown' })
+  await settle()
+
+  return ui
+}
+
+test('a second 正確に数える press while the first is counting is ignored', async ($, on) => {
+  engine(on)
+  const data = fakeData(on, { usage: withBreakdown() })
+  const ui = await openBreakdown($)
+  data.calls.length = 0
+  let release = () => {}
+  data.usageGate = new Promise<void>(resolve => (release = resolve))
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  expect(data.calls.map(c => c.breakdown)).toEqual(['full'])
+  data.usageGate = null
+  release()
+  await settle()
+  // 数え終わったら、また押せる。
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  expect(data.calls.map(c => c.breakdown)).toEqual(['full', 'full'])
+  await ui.unmount()
+})
+
+test('the exact count stays, labelled 正確, through summary fetches until the next turn.start', async ($, on) => {
+  engine(on)
+  const exact = withBreakdown({}, [cat('Messages', 'used', 300000), cat('Free space', 'free', 700000)])
+  const data = fakeData(on, { usage: (e: any) => (e.breakdown === 'full' ? exact : withBreakdown()) })
+  const ui = await openBreakdown($)
+  let t = await draw(ui)
+  expect(t).toContain('500k')
+  expect(t).toContain('概算')
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  t = await draw(ui)
+  expect(t).toContain('300k')
+  expect(t).toContain('正確')
+  expect(t).not.toContain('概算')
+  data.calls.length = 0
+  await $.tool.call({ tool: 'Grep', pattern: 'x' })
+  await $.turn.complete(done({ reason: 'error' }))
+  await settle()
+  expect(data.calls.length).toBeGreaterThan(0)
+  expect(data.calls.every(c => c.breakdown === 'summary')).toBe(true)
+  t = await draw(ui)
+  expect(t).toContain('300k')
+  expect(t).not.toContain('500k')
+  expect(t).toContain('正確')
+  await $.turn.start({ text: 'hi', turnId: 't2' })
+  await settle()
+  t = await draw(ui)
+  expect(t).toContain('500k')
+  expect(t).toContain('概算')
+  expect(t).not.toContain('正確')
   await ui.unmount()
 })

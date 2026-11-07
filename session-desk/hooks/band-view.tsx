@@ -15,6 +15,8 @@ export type BandArgs = {
   context: { percent: number; tokens: number | null; window: number | null; parts: { id: CategoryId; tokens: number }[] } | null
   breakdown: {
     open: boolean
+    // 「正確に数える」の結果を出しているとき真（「概算」の代わりに「正確」と出す）。
+    exact: boolean
     rows: { id: CategoryId; name: string; tokens: number; percent: number; detail: { name: string; tokens: number }[] | null; detailOpen: boolean }[]
     compactIn: number | null
     threshold: number | null
@@ -44,8 +46,8 @@ const BREAKDOWN_BAR_WIDTH_NARROW = 16
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
 const AGENT_MARK = {
   running: { mark: '●', color: 'blue', word: '実行中' },
-  waiting: { mark: '○', color: 'gray', word: '待機' },
-  done: { mark: '✓', color: 'success', word: '完了' },
+  waiting: { mark: '◌', color: 'gray', word: '待機' },
+  done: { mark: '○', color: 'gray', word: '完了' },
 } as const
 
 export function renderBand(ui: Ui, a: BandArgs) {
@@ -99,7 +101,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
               <Text>{clean(row.type)}</Text>
               <Text>{AGENT_MARK[row.state].word}</Text>
               <Text>{clean(row.description)}</Text>
-              {row.elapsedMs !== null && <Text dimColor>{formatDuration(row.elapsedMs)}</Text>}
+              {row.state !== 'done' && row.elapsedMs !== null && <Text dimColor>{formatDuration(row.elapsedMs)}</Text>}
             </Box>
           ))}
       </Box>
@@ -156,7 +158,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
             </Text>
           )}
           <Box gap={2} flexWrap="wrap">
-            <Text dimColor>概算</Text>
+            <Text dimColor>{bd.exact ? '正確' : '概算'}</Text>
             <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
               <Text color="suggestion">正確に数える</Text>
             </Button>

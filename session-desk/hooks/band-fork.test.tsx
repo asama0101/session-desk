@@ -37,14 +37,31 @@ function engine(on: any) {
     toasts: [] as string[],
     submitFails: false,
     release: (_v: any) => {},
+    runs: [] as string[],
+    sleeps: [] as number[],
+    wake: () => {},
   }
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
   on('session.cwd', () => ({ value: 'D:/p' }))
   on('clock.every', () => ({ deny: 'test: no timers' }))
-  on('clock.sleep', () => ({ value: undefined }))
-  on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  // fork の時間切れ（30 秒）の待ちは、wake を呼ぶまで返さない。ほかの待ちはすぐ返す。
+  on('clock.sleep', (_: any, e: any) => {
+    s.sleeps.push(e.ms)
+    if (e.ms === 30_000) {
+      return new Promise(resolve => {
+        s.wake = () => resolve({ value: undefined })
+      })
+    }
+
+    return { value: undefined }
+  })
+  on('process.run', (_: any, e: any) => {
+    s.runs.push(e.argv.join(' '))
+
+    return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   on('tool.call', () => ({ result: {} }))
   on('turn.start', (_: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', (_: any, e: any) => ({ text: e.answer }))
@@ -364,5 +381,45 @@ test('a step sent by a click lands in the history', async ($, on) => {
   await ui.press({ key: 'tab-history' })
   await settle()
   expect(await draw(ui)).toContain('1. 案 A で進めて')
+  await ui.unmount()
+})
+
+test('while our fork runs, a Bash call still asks the Git refresh', async ($, on) => {
+  const s = engine(on)
+  s.forks.push({ hold: true })
+  await start($)
+  const ui = await mount($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete(done({ turnId: 't1' }))
+  await settle()
+  s.runs.length = 0
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await settle()
+  expect(s.runs.some(r => r.includes('status --porcelain'))).toBe(true)
+  // 帯の記録は飛ばす。
+  expect(await draw(ui)).not.toContain('実行中 Bash')
+  await ui.unmount()
+})
+
+test('a fork that never answers lifts the guard after 30 s, with no toast and no steps', async ($, on) => {
+  const s = engine(on)
+  s.forks.push({ hold: true })
+  await start($)
+  const ui = await mount($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete(done({ turnId: 't1' }))
+  await settle()
+  expect(s.sleeps).toContain(30_000)
+  await $.turn.start({ text: 'fork', turnId: 'f1' })
+  expect(await draw(ui)).not.toContain('実行中')
+  s.wake()
+  await settle()
+  await $.turn.start({ text: 'hi', turnId: 't2' })
+  expect(await draw(ui)).toContain('実行中')
+  // 時間切れのあとに返った結果は使わない。
+  s.release(reply(GOOD))
+  await settle()
+  expect(await labels(ui)).not.toContain('案 A で進めて')
+  expect(s.toasts).toEqual([])
   await ui.unmount()
 })
