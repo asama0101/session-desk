@@ -1,7 +1,7 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
-import { tidyUrl } from './branch'
+import { nextOf, tidyUrl } from './branch'
 import { renderMore, shownCount } from './more'
-import type { BranchRow, Kind, Stage } from './branch'
+import type { BranchRow, Kind, Next, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
 
@@ -78,7 +78,7 @@ function rowColor(row: BranchRow): string {
   if (row.now.text.startsWith('commit 済み')) {
     return 'success'
   }
-  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'suggestion', 7: 'warning', 8: 'success', 9: 'merged' }
+  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'merged' }
 
   return byStage[row.now.id ?? 0] ?? 'inactive'
 }
@@ -112,6 +112,8 @@ type Args = {
   onSelect(name: string): void
   // 一覧の「もっと見る」。閉じているときは、先頭から数件と、いまのブランチ・選んだブランチだけを出す。
   more: { open: boolean; onToggle(): void }
+  // 「次へ進む」ボタンを押したとき。
+  onNext(next: Next): void
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -158,6 +160,10 @@ export function renderBranchTab(ui: Ui, a: Args) {
     </Box>
   )
 
+  // 「今」の段階の行に出す、次へ進むボタン（いまのブランチだけ）。
+  const defaultName = snap.branches.find(b => b.kind === 'default')?.name ?? null
+  const next = chosen === undefined ? null : nextOf(chosen, defaultName)
+
   const detail = (
     <Box flexDirection="column">
       {chosen === undefined ? (
@@ -180,6 +186,13 @@ export function renderBranchTab(ui: Ui, a: Args) {
                   </Text>
                 </Box>
                 {date !== '' && <Text dimColor>{date}</Text>}
+                {isNow && next !== null && (
+                  <Button key="git-next" plain label={next.label} onPress={() => a.onNext(next)}>
+                    <Text bold color="suggestion">
+                      {next.label}
+                    </Text>
+                  </Button>
+                )}
               </Box>
             )
           })}

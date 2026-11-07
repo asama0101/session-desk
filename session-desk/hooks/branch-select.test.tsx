@@ -122,7 +122,7 @@ test('when the chosen branch disappears, the screen goes back to the current bra
   await $.tool.call({ tool: 'Bash', command: 'git branch -d docs/b' })
   await settle(e.calls)
   expect(await ui.find({ key: 'branch-docs/b' })).toBeUndefined()
-  expect(await texts(ui)).toContain('● レビュー（PR 前）  次: レビュー')
+  expect(await texts(ui)).toContain('● push  次: push')
   await ui.unmount()
 })
 

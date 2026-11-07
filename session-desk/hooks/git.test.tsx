@@ -80,7 +80,7 @@ test('collect builds one row per local branch; origin/HEAD is not a branch; main
   expect(snap.branches.map(b => b.name)).toEqual(['docs/b', 'feat/a', 'main'])
   expect(row(snap, 'main')?.kind).toBe('default')
   expect(row(snap, 'main')?.stages).toEqual([])
-  expect(row(snap, 'feat/a')?.now.text).toBe('次: レビュー')
+  expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
   expect(row(snap, 'feat/a')?.isCurrent).toBe(true)
   expect(row(snap, 'docs/b')?.now.text).toBe('次: ブランチを削除')
   expect(snap.baseRef).toBe('refs/remotes/origin/main')
@@ -125,8 +125,8 @@ test('when gh rejects, exits non-zero or is truncated, PR stages are unknown and
     const snap = await collect(fake({ gh }).run, null, OPTS)
     expect(snap.ghProblem).toBe(true)
     expect(snap.ghAt).toBe(null)
-    expect(statuses(snap, 'docs/b')).toEqual(['done', 'done', 'done', 'done', 'done', 'unknown', 'unknown', 'unknown', 'unknown'])
-    expect(row(snap, 'feat/a')?.now.text).toBe('次: レビュー')
+    expect(statuses(snap, 'docs/b')).toEqual(['done', 'done', 'done', 'done', 'unknown', 'unknown', 'unknown', 'unknown'])
+    expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
   }
 })
 
@@ -138,7 +138,7 @@ test('when ahead-behind fails, the ahead count comes from rev-list per branch', 
   })
   const snap = await collect(f.run, null, OPTS)
   expect(row(snap, 'feat/a')?.facts.ahead).toBe(2)
-  expect(row(snap, 'feat/a')?.now.text).toBe('次: レビュー')
+  expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
 })
 
 test('a truncated branch list empties the list with a warning (not no-commit)', async () => {
@@ -156,7 +156,7 @@ test('withGh=false reuses the previous PRs for the same cwd, and drops them for 
   expect(row(again, 'docs/b')?.now.text).toBe('次: ブランチを削除')
   expect(again.ghAt).toBe(first.ghAt)
   const other = await collect(fake().run, first, { ...OPTS, withGh: false, cwd: 'D:/other' })
-  expect(statuses(other, 'docs/b')?.slice(5)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
+  expect(statuses(other, 'docs/b')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
   expect(other.ghAt).toBe(null)
 })
 
@@ -287,11 +287,11 @@ test('when the PR list hit its limit, enrich asks gh for the chosen branch alone
   const snap = await collect(f.run, null, OPTS)
   expect(snap.prCapped).toBe(true)
   expect(row(snap, 'feat/a')?.facts.prKnown).toBe(false)
-  expect(statuses(snap, 'feat/a')?.slice(5)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
+  expect(statuses(snap, 'feat/a')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
   const rich = await enrich(f.run, snap, 'feat/a')
   expect(f.calls).toContain(headKey)
   expect(row(rich, 'feat/a')?.facts.prKnown).toBe(true)
-  expect(statuses(rich, 'feat/a')?.slice(5)).toEqual(['todo', 'todo', 'todo', 'todo'])
+  expect(statuses(rich, 'feat/a')?.slice(4)).toEqual(['todo', 'todo', 'todo', 'todo'])
 })
 
 test('remotes: every remote is listed with a tidy URL; origin makes hasRemote true', async () => {
@@ -314,7 +314,7 @@ test('no remote at all: gh is not called, push onwards is skipped, and the branc
   expect(snap.remotes).toEqual([])
   expect(f.calls.some(c => c.startsWith('gh '))).toBe(false)
   expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(false)
-  expect(statuses(snap, 'feat/a')).toEqual(['done', 'done', 'done', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
+  expect(statuses(snap, 'feat/a')).toEqual(['done', 'done', 'done', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
   expect(row(snap, 'feat/a')?.now.text).toBe('commit 済み（リモートなし）')
   expect(snap.ghProblem).toBe(false)
 })
@@ -330,7 +330,7 @@ test('when git remote -v fails, remotes are unknown (null) and the stages are ju
   const snap = await collect(fake({ remote: { exitCode: 128 } }).run, null, OPTS)
   expect(snap.remotes).toBe(null)
   expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(true)
-  expect(row(snap, 'feat/a')?.now.text).toBe('次: レビュー')
+  expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
 })
 
 test('the difference from origin: ahead and behind come from one left-right count; equal tips and no origin give none', async () => {

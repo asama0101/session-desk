@@ -141,7 +141,7 @@ test('the heading counts the branches; each row shows the mark, kind, name and n
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('ブランチ 3')
-  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"label":"＊feat feat/a  次: レビュー"')
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"label":"＊feat feat/a  次: push"')
   expect(await jsonOf(ui, 'branch-docs/b')).toContain('"label":"　docs docs/b  次: ブランチを削除"')
   expect(await jsonOf(ui, 'branch-main')).toContain('"label":"　既定 main  既定"')
   await ui.unmount()
@@ -156,12 +156,12 @@ test('the current branch is selected first; its stages show symbols, dates, the 
   expect(lines).toContain('✓ ブランチを切る')
   expect(lines).toContain('—')
   expect(lines).toContain('✓ commit  2 件')
-  expect(lines).toContain('● レビュー（PR 前）  次: レビュー')
+  expect(lines).toContain('● push  次: push')
   expect(lines).toContain('○ PR')
   expect(lines).toContain('feat/a')
-  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（9 段階）。
+  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（8 段階）。
   const rail = lines.filter(l => ['┌', '├', '└'].includes(l))
-  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '├', '└'])
+  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '└'])
   await ui.unmount()
 })
 
@@ -311,7 +311,7 @@ test('a row shows the difference from origin as ↑ahead ↓behind, only when th
   const e = engine(on, { refs, diff: '1\t2\n' })
   await start($)
   const ui = await open($, e.calls)
-  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"label":"＊feat feat/a  ↑2 ↓1  次: レビュー"')
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"label":"＊feat feat/a  ↑2 ↓1  次: push"')
   expect(await jsonOf(ui, 'branch-docs/b')).toContain('"label":"　docs docs/b  次: ブランチを削除"')
   await ui.unmount()
 })
@@ -342,7 +342,7 @@ test('colors: done is green, now is yellow and bold, todo is grey', async ($, on
   // レールの線は、済は緑、今は黄色、これからは灰色。
   expect(await textJson(ui, '┌')).toContain('"color":"success"')
   expect(await textJson(ui, '└')).toContain('"color":"inactive"')
-  const now = await textJson(ui, '● レビュー（PR 前）  次: レビュー')
+  const now = await textJson(ui, '● push  次: push')
   expect(now).toContain('"color":"warning"')
   expect(now).toContain('"bold":true')
   expect(await textJson(ui, '○ PR')).toContain('"color":"inactive"')
@@ -428,6 +428,7 @@ test('a token in a remote URL never reaches the screen', async () => {
     offsetMin: 0,
     onSelect() {},
     more: { open: false, onToggle() {} },
+    onNext() {},
   })
   expect(JSON.stringify(tree)).not.toContain('tok123')
 })
@@ -460,6 +461,7 @@ test('git: a long branch list shows 5 rows; the current and chosen branch stay i
         offsetMin: 0,
         onSelect() {},
         more: { open: over.open, onToggle() {} },
+        onNext() {},
       }),
     )
   const rowsIn = (json: string) => [...json.matchAll(/"key":"branch-(b\d+)"/g)].map(m => m[1])
@@ -476,5 +478,38 @@ test('git: a long branch list shows 5 rows; the current and chosen branch stay i
   expect(rowsIn(open)).toHaveLength(8)
   expect(open).toContain('▴ 閉じる')
   // 5 件以下なら、ボタンはない。
-  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} } }))).not.toContain('more-git')
+  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {} }))).not.toContain('more-git')
+})
+
+test('next button: the current branch gets a button on its 今 row; pressing it sends the request once', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.find({ key: 'git-next' }))).toContain('▶ push する')
+  await ui.press({ key: 'git-next' })
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
+  await ui.unmount()
+})
+
+test('next button: editing offers commit', async ($, on) => {
+  const e = engine(on, { status: ' M x ' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.find({ key: 'git-next' }))).toContain('▶ commit する')
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」の未コミットの変更を commit してください'])
+  await ui.unmount()
+})
+
+test('next button: a branch that is not the current one has no button', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'branch-docs/b' })
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeUndefined()
+  await ui.unmount()
 })

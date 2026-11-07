@@ -8,6 +8,7 @@ import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
 import { renderBranchTab } from './branch-view'
 import { renderMore, shownCount } from './more'
+import type { Next } from './branch'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
@@ -478,6 +479,29 @@ async function pickStep($: any, i: number) {
   )
 }
 
+// Git タブの「次へ進む」を押す。同じ状態（key が同じ）での二度押しは、送らない。Claude が止まったら、また押せる。
+let nextSentKey: string | null = null
+
+function pressNext($: any, next: Next) {
+  if (nextSentKey === next.key) {
+    return
+  }
+  nextSentKey = next.key
+  stepSent.push(next.prompt)
+  $.prompt.submit({ text: next.prompt }).then(
+    () => {
+      if (takeStepSent(next.prompt)) {
+        void update($, history, list => [...list, next.prompt]).catch(() => {})
+      }
+    },
+    () => {
+      takeStepSent(next.prompt)
+      nextSentKey = null
+      void $.ui.toast('依頼を送れませんでした')
+    },
+  )
+}
+
 // 選択肢から送った文のうち、まだ履歴に載せていないもの。
 const stepSent: string[] = []
 
@@ -562,6 +586,8 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    // 依頼のターンが終わったら、同じ状態でも「次へ進む」をもう一度押せる。
+    nextSentKey = null
     if (forkGuard.id !== null) {
       return next(e)
     }
@@ -720,6 +746,7 @@ export const register: Register = on => {
           offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
+          onNext: next => void pressNext($, next),
         },
       )
     } else {

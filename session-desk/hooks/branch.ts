@@ -150,8 +150,7 @@ export type BranchRow = {
   now: Now
 }
 
-// 段階の並び。レビューは 2 回ある: push の前（自分で見直す。済んだかは git から分からないので、push 済みなら済んだとみなす）と、PR の上（GitHub のレビュー）。
-const LABELS = ['ブランチを切る', '編集', 'commit', 'レビュー（PR 前）', 'push', 'PR', 'レビュー（PR 上）', 'マージ', '削除'] as const
+const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', '削除'] as const
 
 function statusesOf(f: Facts): Status[] {
   const pr = f.pr
@@ -199,8 +198,7 @@ function statusesOf(f: Facts): Status[] {
     s5 = s6 = s7 = s8 = 'skipped'
   }
 
-  // push の前のレビューは、push と同じ判定（push 済みなら済み。リモートがなければ対象外）。
-  return [s1, s2, s3, s4, s4, s5, s6, s7, s8]
+  return [s1, s2, s3, s4, s5, s6, s7, s8]
 }
 
 export function computeStages(f: Facts): Stage[] {
@@ -210,7 +208,6 @@ export function computeStages(f: Facts): Stage[] {
     f.createdAt,
     f.firstCommitAt,
     f.lastCommitAt,
-    null,
     f.pushedAt,
     pr?.createdAt ?? null,
     reviewedAt,
@@ -239,12 +236,11 @@ export function nowOf(stages: readonly Stage[], f: Facts): Now {
   const texts: Record<number, string> = {
     2: '次: 編集',
     3: '編集中',
-    4: '次: レビュー',
-    5: '次: push',
-    6: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
-    7: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
-    8: 'マージ待ち',
-    9: '次: ブランチを削除',
+    4: '次: push',
+    5: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
+    6: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
+    7: 'マージ待ち',
+    8: '次: ブランチを削除',
   }
 
   return { id: stage.id, text: texts[stage.id] ?? '' }
@@ -317,4 +313,40 @@ export function parseRemotes(stdout: string): Remote[] {
   }
 
   return found
+}
+
+// 「次へ進む」ボタン。いまチェックアウトしているブランチの「今」が commit・push・PR・削除のとき、その段階の行に出す。
+// 押すと、prompt を Claude に送る（確認は挟まない）。マージとレビューは人の番なので、ボタンはない。
+export type Next = {
+  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。二度押しを止める目印。
+  key: string
+  // ボタンの文字（例: ▶ push する）
+  label: string
+  prompt: string
+}
+
+export function nextOf(row: BranchRow, base: string | null = null): Next | null {
+  if (!row.isCurrent || row.kind === 'default') {
+    return null
+  }
+  const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
+  switch (row.now.id) {
+    case 3:
+      // マージ済みのブランチに commit は促さない。
+      return row.facts.dirty === true && row.facts.pr?.state !== 'MERGED'
+        ? { key, label: '▶ commit する', prompt: `ブランチ「${row.name}」の未コミットの変更を commit してください` }
+        : null
+    case 4:
+      // origin のほうが進んでいるときは、push を促さない（先に取り込みが要る）。
+      return (row.facts.originDiff?.behind ?? 0) > 0 ? null : { key, label: '▶ push する', prompt: `ブランチ「${row.name}」を push してください` }
+    case 5:
+      // push の状態が不明なときは、PR を促さない。
+      return row.facts.pushed === null
+        ? null
+        : { key, label: '▶ PR を作る', prompt: `ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
+    case 8:
+      return { key, label: '▶ ブランチを削除', prompt: `マージ済みの作業ブランチ「${row.name}」を削除してください` }
+    default:
+      return null
+  }
 }
