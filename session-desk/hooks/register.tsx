@@ -1,27 +1,18 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
-
 import type { Tab } from '../types'
-import { addTool, BRANCH_COLOR, classifyCategory, ICONS, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
-import type { AgentRow, CategoryId } from './band'
+import { addTool, BRANCH_COLOR, ICONS, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import type { AgentRow } from './band'
 import { renderBand } from './band-view'
-import type { BandArgs } from './band-view'
-import { renderBranchTab } from './branch-view'
-import { renderMore, shownCount } from './more'
 import type { Next } from './branch'
+import { renderBranchTab } from './branch-view'
+import { breakdownArgs, partsOf } from './breakdown'
+import { blockedByDialog } from './dialog'
+import { cachedEffort, forgetEffort } from './effort'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
-import {
-  DEFAULT_QUICK,
-  addQuick,
-  moveQuick,
-  addSkip,
-  parseQuick,
-  parseSkips,
-  preview,
-  removeQuick,
-  stripControl,
-} from './lib'
+import { DEFAULT_QUICK, addQuick, moveQuick, addSkip, parseQuick, parseSkips, preview, removeQuick, stripControl } from './lib'
+import { renderMore, shownCount } from './more'
 import { around, createRefresher, ghDelayMs, wantsGh } from './refresh'
 
 const PANE = 'session-desk'
@@ -84,61 +75,6 @@ const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
   { exact: false, detail: [] as string[] },
 )
-// 今の effort を、読めるところから順に探す。どれも読めなければ null（見出しに effort を出さない）。
-//   1. /config の行（名前に effort を含む行）
-//   2. 環境変数 CLAUDE_EFFORT
-//   3. 設定ファイルの effortLevel（プロジェクトの settings.local.json、settings.json、ユーザーの settings.json の順）。起動後に /effort で変えた値は、ここには載らない。
-async function readEffort($: any, cwd: string | null): Promise<string | null> {
-  const level = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null)
-  try {
-    const rows: { key: string; label: string; value: unknown }[] = await $.config.list()
-    const row = rows.find(r => /effort/i.test(r.key) || /effort/i.test(r.label))
-    const found = level(row?.value)
-    if (found !== null) {
-      return found
-    }
-  } catch {
-    // 次の手段へ。
-  }
-  try {
-    const found = level(await $.env.get('CLAUDE_EFFORT'))
-    if (found !== null) {
-      return found
-    }
-  } catch {
-    // 次の手段へ。
-  }
-  const files: string[] = []
-  const slash = (path: string) => path.split(String.fromCharCode(92)).join('/')
-  if (cwd !== null) {
-    files.push(`${slash(cwd)}/.claude/settings.local.json`, `${slash(cwd)}/.claude/settings.json`)
-  }
-  try {
-    const config = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? null
-    const home = config === null ? ((await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? null) : null
-    const user = config !== null ? slash(config) : home !== null ? `${slash(home)}/.claude` : null
-    if (user !== null) {
-      files.push(`${user}/settings.json`)
-    }
-  } catch {
-    // ユーザーの設定は探さない。
-  }
-  for (const file of files) {
-    try {
-      const found = level(JSON.parse(await $.fs.read(file)).effortLevel)
-      if (found !== null) {
-        return found
-      }
-    } catch {
-      // ファイルがない・読めない・JSON でないときは、次へ。
-    }
-  }
-
-  return null
-}
-
-// effort の読み取りの結果。取得のたびに設定ファイルまで読み直さないように、ターンの始まりとセッションの始まりまで使い回す。
-let effortCache: { cwd: string | null; value: string | null } | null = null
 
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
 const bandFetch = { running: false, again: false }
@@ -282,10 +218,7 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     } catch {
       // ディレクトリは出さない。
     }
-    if (effortCache === null || effortCache.cwd !== cwd) {
-      effortCache = { cwd, value: await readEffort($, cwd) }
-    }
-    const effort = effortCache.value
+    const effort = await cachedEffort($, cwd)
     let list: { id: string; type: string; description: string; status: string }[] | null = null
     try {
       const got = await $.agent.list()
@@ -405,66 +338,6 @@ async function toggleAgents($: any) {
   await update($, agentsView, v => ({ ...v, open: !cur.open }))
 }
 
-// 内訳のカテゴリを、帯の色分けの区分ごとに合計する（空きは除く）。
-function partsOf(breakdown: { categories: { name: string; kind: string; tokens: number }[] } | null): { id: CategoryId; tokens: number }[] {
-  const sums = new Map<CategoryId, number>()
-  for (const c of breakdown?.categories ?? []) {
-    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
-    if (id !== 'free') {
-      sums.set(id, (sums.get(id) ?? 0) + c.tokens)
-    }
-  }
-
-  return [...sums].map(([id, tokens]) => ({ id, tokens }))
-}
-
-const CATEGORY_NAMES: Record<CategoryId, string> = {
-  messages: 'メッセージ',
-  mcp: 'MCP',
-  systemTools: 'ツール',
-  systemPrompt: 'システム',
-  memory: 'メモリ',
-  skills: 'スキル',
-  other: 'その他',
-  free: '空き',
-}
-
-// 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
-function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandArgs['breakdown'] {
-  if (bd === null) {
-    return null
-  }
-  const sums = new Map<CategoryId, number>()
-  let used = 0
-  for (const c of bd.categories as { name: string; kind: string; tokens: number }[]) {
-    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
-    sums.set(id, (sums.get(id) ?? 0) + c.tokens)
-    used += c.kind === 'used' ? c.tokens : 0
-  }
-  const lists: Partial<Record<CategoryId, { name: string; tokens: number }[]>> = { mcp: bd.mcpTools, memory: bd.memoryFiles, skills: bd.skills }
-  const rows = [...sums]
-    .filter(([, tokens]) => tokens > 0)
-    .sort(([a, x], [b, y]) => (a === 'free' ? 1 : b === 'free' ? -1 : y - x))
-    .map(([id, tokens]) => {
-      const list = lists[id]
-
-      return {
-        id,
-        name: CATEGORY_NAMES[id],
-        tokens,
-        detail: list !== undefined && list.length > 0 ? [...list].sort((p, q) => q.tokens - p.tokens) : null,
-        detailOpen: ui.detail.includes(id),
-      }
-    })
-
-  return {
-    exact,
-    rows,
-    compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
-    threshold: bd.autoCompactThreshold ?? null,
-  }
-}
-
 // 「今はしない」。リリースの状態の目印を覚えて（再起動のあとも残す）、段階を読み直す。
 async function skipRelease($: any, desk: Desk, key: string) {
   await update($, releaseSkip, list => addSkip(list, key)).catch(() => {})
@@ -575,32 +448,6 @@ async function pickStep($: any, i: number) {
   )
 }
 
-// 質問や許可の待ち（ダイアログ）が開いているか。空の文を下書きの後ろに足す呼び出しで調べる（下書きは変わらない）。
-// ダイアログが入力を持っているあいだ、エンジンは refusal: 'dialog' で断る。ほかのプラグインのフックが断ったときは、理由が付かない。
-// 理由が分からない断りは、入力欄を守る側（開いている）に倒す。入力欄がない（no_composer）とき、調べられないとき（呼び出しが失敗）は、開いていないとみなす。
-async function dialogOpen($: any): Promise<boolean> {
-  try {
-    const result = await $.prompt.fill({ text: '', mode: 'append' })
-
-    return result.isFilled === false && result.refusal !== 'no_composer'
-  } catch {
-    return false
-  }
-}
-
-// ダイアログが開いているなら、依頼を送らずに知らせる（質問の答えと、ボタンの依頼が衝突するため）。送ってよければ偽。
-async function blockedByDialog($: any): Promise<boolean> {
-  if (await dialogOpen($)) {
-    void Promise.resolve()
-      .then(() => $.ui.toast('質問や許可の待ち中です。先に答えてください'))
-      .catch(() => {})
-
-    return true
-  }
-
-  return false
-}
-
 // 定型文を送る。
 async function sendQuick($: any, text: string) {
   if (await blockedByDialog($)) {
@@ -684,7 +531,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
-    effortCache = null
+    forgetEffort()
     if (forkGuard.id !== null) {
       // prompt.submit のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
       if (!forkGuard.userSent || e.agentId !== undefined) {
@@ -744,7 +591,7 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
-    effortCache = null
+    forgetEffort()
     forkGuard.id = null
     forkGuard.userSent = false
     bandFetch.running = false
