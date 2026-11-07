@@ -117,8 +117,7 @@ function isNowStage(stage: Stage, row: BranchRow): boolean {
 function stageLine(stage: Stage, row: BranchRow): string {
   const isNow = isNowStage(stage, row)
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
-  const icon = stage.label === 'PR' ? `${ICONS.pr} ` : stage.label === 'リリース' ? `${ICONS.release} ` : ''
-  const parts = [`${symbol} ${icon}${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
+  const parts = [`${symbol} ${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
 
   return parts.filter(part => part !== '').join('  ')
 }
@@ -220,7 +219,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
           <Text dimColor>経過はありません（既定ブランチ）</Text>
           {release !== null && (
             <Box flexDirection="column" marginTop={1}>
-              <Text>{stripControl(`${ICONS.release} リリース  ${snap.release?.tag ?? ''} 以降 ${snap.release?.ahead ?? 0} 件が、まだリリースされていません`)}</Text>
+              <Text>{stripControl(`リリース  ${snap.release?.tag ?? ''} 以降 ${snap.release?.ahead ?? 0} 件が、まだリリースされていません`)}</Text>
               <Box gap={2}>
                 {a.busy ? (
                   <Text dimColor>{release.label}</Text>

@@ -86,8 +86,6 @@ export const ICONS = {
   suggest: '💡',
   local: '💻',
   remote: '🌐',
-  release: '🚀',
-  pr: '🔗',
 } as const
 
 // アイコンの幅（桁）。絵文字は 2 桁、後ろの空白が 1 桁。
