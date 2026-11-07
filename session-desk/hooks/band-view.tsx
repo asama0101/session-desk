@@ -39,6 +39,7 @@ const NARROW_COLUMNS = 40
 const BAR_WIDTH = 16
 const BAR_WIDTH_NARROW = 8
 const BREAKDOWN_BAR_WIDTH = 32
+const BREAKDOWN_BAR_WIDTH_NARROW = 16
 
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
 const AGENT_MARK = {
@@ -122,7 +123,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       </Button>
       {bd.open && (
         <Box flexDirection="column">
-          {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BREAKDOWN_BAR_WIDTH)}
+          {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BREAKDOWN_BAR_WIDTH_NARROW : BREAKDOWN_BAR_WIDTH)}
           {bd.rows.map(row => (
             <Box key={`bd-${row.id}`} flexDirection="column">
               <Box gap={2} flexWrap="wrap">

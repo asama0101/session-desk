@@ -166,14 +166,18 @@ test('breakdown closed hides rows; open shows rows, 概算, exact button, detail
   expect(at('概算')).toBeLessThan(at('band-exact'))
 })
 
-test('the stacked bar heads the open breakdown only; 32 cells wide, 16 when narrow', async () => {
-  const cells = (tree: Node) => find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).map(n => (n.children[0] as string).length)
-  const sum = (xs: number[]) => xs.reduce((x, y) => x + y, 0)
-  const ctxOnly = sum(cells(draw({ context: CTX(86) })))
-  const closed = sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(false) })))
-  expect(closed).toBe(ctxOnly)
-  expect(sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true) })))).toBe(ctxOnly + 32)
-  expect(sum(cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true), columns: 30 })))).toBe(8 + 8)
+test('the breakdown bar is drawn only when open: 32 cells wide, 16 when columns < 40', async () => {
+  const cells = (tree: Node) =>
+    find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).reduce(
+      (sum, n) => sum + (n.children[0] as string).length,
+      0,
+    )
+  // 閉じた内訳の描画には文脈のバーだけがある。開いた描画との差が、内訳のバー。
+  const breakdownBar = (columns: number | undefined) =>
+    cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true), columns })) - cells(draw({ context: CTX(86), breakdown: BREAKDOWN(false), columns }))
+  expect(breakdownBar(undefined)).toBe(32)
+  expect(breakdownBar(120)).toBe(32)
+  expect(breakdownBar(30)).toBe(16)
 })
 
 test('detail closed hides the per-item rows', async () => {
