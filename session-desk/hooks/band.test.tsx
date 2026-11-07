@@ -8,7 +8,6 @@ import {
   formatDuration,
   formatRemaining,
   formatTokens,
-  isRiskyStep,
   limitRows,
   nextAgentsOpen,
   parseForkReply,
@@ -110,10 +109,21 @@ test('limitRows keeps only five_hour and seven_day', async () => {
   ])
 })
 
-// ---- fork の返答の解析・危険語・実行状態・サブエージェント ----
+// ---- fork の返答の解析・実行状態・サブエージェント ----
 
 test('parseForkReply: reads a plain JSON reply', async () => {
-  expect(parseForkReply('{"goal":"A","reason":"R","steps":["x","y"]}', null)).toEqual({ goal: 'A', reason: 'R', steps: ['x', 'y'] })
+  expect(parseForkReply('{"goal":"A","reason":"R","steps":["x","y"]}', null)).toEqual({ goal: 'A', reason: 'R', steps: ['x', 'y'], recommended: null })
+})
+
+test('parseForkReply: recommended points at one step, counted in the steps that are kept', async () => {
+  expect(parseForkReply('{"goal":"A","steps":["x","y"],"recommended":1}', null).recommended).toBe(1)
+  // 長すぎて捨てた案があっても、残した案の番号に直す。
+  const long = 'あ'.repeat(41)
+  expect(parseForkReply(JSON.stringify({ goal: 'A', steps: [long, 'x', 'y'], recommended: 2 }), null)).toMatchObject({ steps: ['x', 'y'], recommended: 1 })
+  // 捨てた案を指すとき、範囲外、数でないとき、null のときは、推奨なし。
+  for (const recommended of [0, 5, -1, 1.5, '1', null, undefined]) {
+    expect(parseForkReply(JSON.stringify({ goal: 'A', steps: [long, 'x'], recommended }), null).recommended).toBe(null)
+  }
 })
 
 test('parseForkReply: takes JSON from the first { to the last }', async () => {
@@ -123,7 +133,7 @@ test('parseForkReply: takes JSON from the first { to the last }', async () => {
 })
 
 test('parseForkReply: broken JSON or a non-string goal falls back to prevGoal', async () => {
-  const want = { goal: '前', reason: '判断待ち', steps: [] }
+  const want = { goal: '前', reason: '判断待ち', steps: [], recommended: null }
   expect(parseForkReply('{"goal":', '前')).toEqual(want)
   expect(parseForkReply('no json', '前')).toEqual(want)
   expect(parseForkReply('{"goal":5,"steps":["x"]}', '前')).toEqual(want)
@@ -133,7 +143,7 @@ test('parseForkReply: length limits are exact, over-long values are dropped not 
   const s40 = 'あ'.repeat(40)
   const s41 = 'あ'.repeat(41)
   const ok = parseForkReply(JSON.stringify({ goal: s40, reason: 'r'.repeat(30), steps: [s40, s41] }), null)
-  expect(ok).toEqual({ goal: s40, reason: 'r'.repeat(30), steps: [s40] })
+  expect(ok).toEqual({ goal: s40, reason: 'r'.repeat(30), steps: [s40], recommended: null })
   expect(parseForkReply(JSON.stringify({ goal: 'A', reason: 'r'.repeat(31), steps: [] }), null).reason).toBe('判断待ち')
   const long = parseForkReply(JSON.stringify({ goal: s41, steps: ['x'] }), '前')
   expect(long.goal).toBe('前')
@@ -147,20 +157,6 @@ test('parseForkReply: keeps at most 4 steps', async () => {
 test('parseForkReply: strips control codes and folds newlines in steps', async () => {
   const r = parseForkReply(JSON.stringify({ goal: 'A', steps: ['\u001b[31mx\u001b[0m', 'a\u202eb', 'a\nb'] }), null)
   expect(r.steps).toEqual(['x', 'ab', 'a b'])
-})
-
-test('isRiskyStep: flags destructive words, including full-width forms', async () => {
-  for (const t of ['ブランチを削除する', 'git push する', 'rm -rf build', '--no-verify で commit', 'Force push', 'ｐｕｓｈ する']) {
-    expect(isRiskyStep(t)).toBe(true)
-  }
-  expect(isRiskyStep('テストを実行する')).toBe(false)
-})
-
-test('isRiskyStep: delete and overwrite, any case and full-width', async () => {
-  for (const t of ['Delete the branch', 'overwrite the file', 'ＤＥＬＥＴＥ する', 'OVERWRITE で保存']) {
-    expect(isRiskyStep(t)).toBe(true)
-  }
-  expect(isRiskyStep('ファイルを読む')).toBe(false)
 })
 
 test('RunState: toolLabel shows the oldest tool and the extra count', async () => {

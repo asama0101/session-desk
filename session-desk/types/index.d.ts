@@ -18,7 +18,7 @@ declare module 'claude-code' {
         goal: string | null
         reason: string
         steps: string[]
-        confirming: number | null
+        recommended: number | null
         turnId: string | null
       }
       usageView: {

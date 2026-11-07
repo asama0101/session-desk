@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, CATEGORY_COLORS, formatDuration, formatTokens, isRiskyStep, usageColor } from './band'
+import { barCells, CATEGORY_COLORS, formatDuration, formatTokens, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -22,14 +22,12 @@ export type BandArgs = {
   } | null
   limits: LimitRow[]
   git: { branch: string | null; dirtyCount: number | null } | null
-  steps: { items: string[]; reason: string; confirming: number | null } | null
+  steps: { items: string[]; reason: string; recommended: number | null } | null
   on: {
     toggleAgents(): void
     exact(): void
     toggleDetail(id: CategoryId): void
     pick(i: number): void
-    confirm(i: number): void
-    cancel(): void
   }
   // 端末の幅（列）。狭いときはバーを短くする。
   columns?: number
@@ -206,22 +204,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
 
   const st = a.steps
   const steps =
-    st === null ? null : st.confirming !== null ? (
-      <Box flexDirection="column" borderStyle="round" borderColor="error" paddingX={1}>
-        <Text color="error" bold>
-          本当に送りますか？
-        </Text>
-        <Text>{clean(st.items[st.confirming] ?? '')}</Text>
-        <Box gap={2}>
-          <Button key={`band-step-confirm-${st.confirming}`} plain label="送る" onPress={() => a.on.confirm(st.confirming as number)}>
-            <Text color="success">送る</Text>
-          </Button>
-          <Button key="band-step-cancel" plain label="やめる" onPress={() => a.on.cancel()}>
-            <Text>やめる</Text>
-          </Button>
-        </Box>
-      </Box>
-    ) : (
+    st === null ? null : (
       <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
         <Box gap={2} flexWrap="wrap">
           <Text bold>提案</Text>
@@ -229,13 +212,19 @@ export function renderBand(ui: Ui, a: BandArgs) {
         </Box>
         {st.items.map((item, i) => {
           const text = clean(item)
-          const risky = isRiskyStep(item)
+          const best = st.recommended === i
 
           return (
             <Button key={`band-step-${i}`} plain label={text} onPress={() => a.on.pick(i)}>
               <Text dimColor>{`${i + 1}  `}</Text>
-              <Text color={risky ? 'warning' : 'suggestion'}>{text}</Text>
-              {risky && <Text color="warning">{'  ⚠ 2 回押す'}</Text>}
+              <Text bold={best} color="suggestion">
+                {text}
+              </Text>
+              {best && (
+                <Text bold color="success">
+                  {' (推奨)'}
+                </Text>
+              )}
             </Button>
           )
         })}

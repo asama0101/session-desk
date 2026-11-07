@@ -25,8 +25,6 @@ const BASE: BandArgs = {
     exact() {},
     toggleDetail() {},
     pick() {},
-    confirm() {},
-    cancel() {},
   },
 }
 const draw = (over: Partial<BandArgs> = {}) => renderBand(ui, { ...BASE, ...over }) as Node
@@ -223,31 +221,25 @@ test('detail closed hides the per-item rows', async () => {
   expect(textsOf(draw({ breakdown: b }))).not.toContain('playwright')
 })
 
-test('steps: framed list with numbers, risky rows marked, red confirm frame, null shows nothing', async () => {
+test('steps: framed list with numbers, (推奨) on the recommended row only, null shows nothing', async () => {
   const items = ['git status を見る', 'rm -rf x']
-  const pick = draw({ steps: { items, reason: '理由R', confirming: null } })
+  const pick = draw({ steps: { items, reason: '理由R', recommended: 1 } })
   expect(labelsOf(pick)).toEqual(expect.arrayContaining(items))
   expect(byKey(pick, 'band-step-0')).toBeDefined()
-  const t = textsOf(pick)
-  expect(t.join('|')).toContain('提案')
-  expect(t.join('|')).toContain('理由R')
-  // 番号と、危険な語を含む案だけの「2 回押す」は、ボタンの中の Text。
+  expect(textsOf(pick).join('|')).toContain('提案')
+  expect(textsOf(pick).join('|')).toContain('理由R')
+  // 番号と推奨の印は、ボタンの中の Text。
   const inside = find(pick, n => n.type === 'Text').flatMap(n => n.children.filter(c => typeof c === 'string') as string[])
   expect(inside).toEqual(expect.arrayContaining(['1  ', '2  ']))
-  expect(inside.filter(x => x === '  ⚠ 2 回押す')).toHaveLength(1)
-  expect(colorOf(pick, 'rm -rf x')).toBe('warning')
-  expect(colorOf(pick, 'git status を見る')).toBe('suggestion')
+  expect(inside.filter(x => x === ' (推奨)')).toHaveLength(1)
+  const row = (i: number) => byKey(pick, `band-step-${i}`)
+  expect(JSON.stringify(row(1))).toContain('(推奨)')
+  expect(JSON.stringify(row(0))).not.toContain('(推奨)')
+  // 2 回押す確認は無い。どの案も、押すと送る。
+  expect(JSON.stringify(pick)).not.toContain('2 回押す')
+  expect(JSON.stringify(pick)).not.toContain('本当に送りますか')
   expect(find(pick, n => n.props?.borderColor === 'error')).toHaveLength(0)
-  const conf = draw({ steps: { items, reason: '理由R', confirming: 1 } })
-  expect(textsOf(conf)).toContain('本当に送りますか？')
-  expect(textsOf(conf)).toContain('rm -rf x')
-  expect(labelsOf(conf)).toContain('送る')
-  expect(labelsOf(conf)).toContain('やめる')
-  expect(byKey(conf, 'band-step-confirm-1')).toBeDefined()
-  expect(byKey(conf, 'band-step-cancel')).toBeDefined()
-  expect(byKey(conf, 'band-step-1')).toBeUndefined()
-  expect(find(conf, n => n.props?.borderColor === 'error')).toHaveLength(1)
-  expect(textsOf(conf).join('')).not.toContain('提案')
+  expect(JSON.stringify(draw({ steps: { items, reason: '理由R', recommended: null } }))).not.toContain('(推奨)')
   expect(texts({ steps: null }).join('')).not.toContain('提案')
   expect(labels({ steps: null })).toEqual([])
 })
@@ -273,8 +265,7 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
       rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
     },
   }
-  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: null } }), [
+  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), recommended: 0 } }), [
     'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
   ])
-  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: 0 } }), ['s0', 'goal'])
 })

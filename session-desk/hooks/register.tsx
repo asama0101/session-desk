@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, compactIn, forkPrompt, isRiskyStep, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, classifyCategory, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
@@ -43,7 +43,7 @@ const band = atom(
     goal: null as string | null,
     reason: '',
     steps: [] as string[],
-    confirming: null as number | null,
+    recommended: null as number | null,
     turnId: null as string | null,
   },
 )
@@ -469,7 +469,7 @@ async function askFork($: any, turnId: string): Promise<void> {
       return
     }
     const got = parseForkReply(String(result.text ?? ''), prevGoal)
-    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, confirming: null } : b))
+    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, recommended: got.recommended } : b))
   } catch {
     // 選択肢が出ないだけ。
   } finally {
@@ -479,25 +479,22 @@ async function askFork($: any, turnId: string): Promise<void> {
   }
 }
 
-// 選択肢を押す。危険な語を含むものは、1 回目は確認を出す（confirmed で送る）。
+// 選択肢を押すと、その文をそのまま送る。
 // 二度押しで 2 回送らないように、送る前に、書く時点の atom から選択肢を消す。
-async function pickStep($: any, i: number, confirmed: boolean) {
-  let sent: { text: string; steps: string[]; turnId: string | null } | null = null
+async function pickStep($: any, i: number) {
+  let sent: { text: string; steps: string[]; recommended: number | null; turnId: string | null } | null = null
   await update($, band, b => {
     // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
     sent = null
     const text = b.steps[i]
-    if (text === undefined || (confirmed && b.confirming !== i)) {
+    if (text === undefined) {
       return b
     }
-    if (!confirmed && isRiskyStep(text)) {
-      return { ...b, confirming: i }
-    }
-    sent = { text, steps: b.steps, turnId: b.turnId }
+    sent = { text, steps: b.steps, recommended: b.recommended, turnId: b.turnId }
 
-    return { ...b, steps: [], confirming: null }
+    return { ...b, steps: [], recommended: null }
   })
-  const s = sent as { text: string; steps: string[]; turnId: string | null } | null
+  const s = sent as { text: string; steps: string[]; recommended: number | null; turnId: string | null } | null
   if (s === null) {
     return
   }
@@ -513,7 +510,7 @@ async function pickStep($: any, i: number, confirmed: boolean) {
       takeStepSent(s.text)
       void $.ui.toast('依頼を送れませんでした')
       // 押し直せるように、同じターンのあいだなら選択肢を戻す。
-      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps } : b)).catch(() => {})
+      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps, recommended: s.recommended } : b)).catch(() => {})
     },
   )
 }
@@ -577,7 +574,7 @@ export const register: Register = on => {
       forkGuard.id = null
     }
     if (e.agentId === undefined) {
-      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
+      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], recommended: null, turnId: e.turnId }))
       // 正確に数えた内訳は、新しいターンでは古くなるので、概算に戻す。
       await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false } : v)).catch(() => {})
     }
@@ -687,7 +684,7 @@ export const register: Register = on => {
     }
     if (byUser) {
       try {
-        await update($, band, b => ({ ...b, steps: [], confirming: null }))
+        await update($, band, b => ({ ...b, steps: [], recommended: null }))
       } catch {
         // 選択肢が残るだけ。
       }
@@ -845,8 +842,8 @@ export const register: Register = on => {
           limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。
-          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, confirming: b.confirming },
-          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
+          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, recommended: b.recommended },
+          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
           columns: e.props.bodyColumns,
         })}
         <Box gap={2}>
