@@ -1,15 +1,24 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  addTool,
   barCells,
   classifyCategory,
   compactIn,
   formatDuration,
   formatRemaining,
   formatTokens,
+  isRiskyStep,
   limitRows,
+  nextAgentsOpen,
+  parseForkReply,
+  removeTool,
+  startTurn,
+  summarizeAgents,
+  toolLabel,
   usageColor,
 } from './band'
+import { stripControl } from './lib'
 
 test('usageColor: 80 is warning, 95 is error', async () => {
   expect(usageColor(79)).toBe('normal')
@@ -99,4 +108,84 @@ test('limitRows keeps only five_hour and seven_day', async () => {
     { label: '5時間枠', percent: 30, remaining: '45m' },
     { label: '7日枠', percent: 10, remaining: null },
   ])
+})
+
+// ---- fork の返答の解析・危険語・実行状態・サブエージェント ----
+
+test('parseForkReply: reads a plain JSON reply', async () => {
+  expect(parseForkReply('{"goal":"A","reason":"R","steps":["x","y"]}', null)).toEqual({ goal: 'A', reason: 'R', steps: ['x', 'y'] })
+})
+
+test('parseForkReply: takes JSON from the first { to the last }', async () => {
+  const r = parseForkReply('ok {"goal":"A","steps":[]} end', null)
+  expect(r.goal).toBe('A')
+  expect(r.steps).toEqual([])
+})
+
+test('parseForkReply: broken JSON or a non-string goal falls back to prevGoal', async () => {
+  const want = { goal: '前', reason: '判断待ち', steps: [] }
+  expect(parseForkReply('{"goal":', '前')).toEqual(want)
+  expect(parseForkReply('no json', '前')).toEqual(want)
+  expect(parseForkReply('{"goal":5,"steps":["x"]}', '前')).toEqual(want)
+})
+
+test('parseForkReply: length limits are exact, over-long values are dropped not cut', async () => {
+  const s40 = 'あ'.repeat(40)
+  const s41 = 'あ'.repeat(41)
+  const ok = parseForkReply(JSON.stringify({ goal: s40, reason: 'r'.repeat(30), steps: [s40, s41] }), null)
+  expect(ok).toEqual({ goal: s40, reason: 'r'.repeat(30), steps: [s40] })
+  expect(parseForkReply(JSON.stringify({ goal: 'A', reason: 'r'.repeat(31), steps: [] }), null).reason).toBe('判断待ち')
+  const long = parseForkReply(JSON.stringify({ goal: s41, steps: ['x'] }), '前')
+  expect(long.goal).toBe('前')
+  expect(long.steps).toEqual(['x'])
+})
+
+test('parseForkReply: keeps at most 4 steps', async () => {
+  expect(parseForkReply('{"goal":"A","steps":["1","2","3","4","5"]}', null).steps).toEqual(['1', '2', '3', '4'])
+})
+
+test('parseForkReply: strips control codes and folds newlines in steps', async () => {
+  const r = parseForkReply(JSON.stringify({ goal: 'A', steps: ['\u001b[31mx\u001b[0m', 'a\u202eb', 'a\nb'] }), null)
+  expect(r.steps).toEqual(['x', 'ab', 'a b'])
+})
+
+test('isRiskyStep: flags destructive words, including full-width forms', async () => {
+  for (const t of ['ブランチを削除する', 'git push する', 'rm -rf build', '--no-verify で commit', 'Force push', 'ｐｕｓｈ する']) {
+    expect(isRiskyStep(t)).toBe(true)
+  }
+  expect(isRiskyStep('テストを実行する')).toBe(false)
+})
+
+test('RunState: toolLabel shows the oldest tool and the extra count', async () => {
+  let s = startTurn(1000)
+  expect(s.startedAt).toBe(1000)
+  expect(toolLabel(s)).toBe(null)
+  s = addTool(addTool(s, 1, 'Bash'), 2, 'Edit')
+  expect(toolLabel(s)).toBe('Bash +1')
+  s = removeTool(s, 1)
+  expect(toolLabel(s)).toBe('Edit')
+  expect(toolLabel(removeTool(s, 2))).toBe(null)
+})
+
+test('summarizeAgents: counts only running and pending', async () => {
+  const mk = (id: string, status: string) => ({ id, type: 't', description: 'd', status })
+  const r = summarizeAgents(
+    [mk('a', 'running'), mk('b', 'pending'), mk('c', 'waiting'), mk('d', 'idle'), mk('e', 'completed'), mk('f', 'failed'), mk('g', 'killed')],
+    new Map([['a', 1000]]),
+    4000,
+  )
+  expect(r.running).toBe(2)
+  expect(r.rows.map(x => x.state)).toEqual(['running', 'running', 'waiting', 'waiting', 'done', 'done', 'done'])
+  expect(r.rows[0].elapsedMs).toBe(3000)
+  expect(r.rows[1].elapsedMs).toBe(null)
+})
+
+test('nextAgentsOpen: opens on 0 to 1, respects a manual close, resets at 0', async () => {
+  expect(nextAgentsOpen({ running: 0, closedByUser: false }, 1)).toEqual({ open: true, closedByUser: false })
+  expect(nextAgentsOpen({ running: 1, closedByUser: true }, 2)).toEqual({ open: false, closedByUser: true })
+  expect(nextAgentsOpen({ running: 1, closedByUser: true }, 0).closedByUser).toBe(false)
+})
+
+test('stripControl: removes BOM, line/paragraph separators, soft hyphen and ALM', async () => {
+  expect(stripControl('a\ufeffb\u2028c\u2029d\u00ade\u061cf')).toBe('abcdef')
 })

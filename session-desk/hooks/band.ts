@@ -1,5 +1,7 @@
 // セッション帯の表示用の純粋な関数。エンジンにも `$` にも触れない。
 
+import { stripControl } from './lib'
+
 // ---- カテゴリと色 ----
 
 export type CategoryId =
@@ -122,4 +124,110 @@ export function limitRows(
     rows.push({ label, percent: r.percentUsed, remaining: r.resetsAt ? formatRemaining(r.resetsAt, nowMs) : null })
   }
   return rows
+}
+
+// ---- fork の返答の解析 ----
+
+const GOAL_MAX = 40
+const REASON_MAX = 30
+const STEP_MAX = 40
+const STEPS_MAX = 4
+const WAITING = '判断待ち'
+
+// 制御コードを除き、空白（改行を含む）を 1 つにまとめる。
+function clean(text: string): string {
+  return stripControl(text).replace(/\s+/g, ' ').trim()
+}
+
+// 長すぎる値は切らずに捨てる（null）。
+function fit(value: unknown, max: number): string | null {
+  if (typeof value !== 'string') return null
+  const text = clean(value)
+  return text !== '' && text.length <= max ? text : null
+}
+
+export function parseForkReply(text: string, prevGoal: string | null): { goal: string | null; reason: string; steps: string[] } {
+  const broken = { goal: prevGoal, reason: WAITING, steps: [] as string[] }
+  const from = text.indexOf('{')
+  const to = text.lastIndexOf('}')
+  if (from < 0 || to < from) return broken
+  let json: unknown
+  try {
+    json = JSON.parse(text.slice(from, to + 1))
+  } catch {
+    return broken
+  }
+  if (typeof json !== 'object' || json === null) return broken
+  const obj = json as Record<string, unknown>
+  if (typeof obj.goal !== 'string') return broken
+  const steps = (Array.isArray(obj.steps) ? obj.steps : [])
+    .map(s => fit(s, STEP_MAX))
+    .filter((s): s is string => s !== null)
+    .slice(0, STEPS_MAX)
+  return { goal: fit(obj.goal, GOAL_MAX) ?? prevGoal, reason: fit(obj.reason, REASON_MAX) ?? WAITING, steps }
+}
+
+// 取り返しのつかない操作を思わせる語。全角は半角に直してから見る。
+export function isRiskyStep(text: string): boolean {
+  return /削除|消去|push|force|reset|\brm\b|\bdrop\b|--no-verify/i.test(text.normalize('NFKC'))
+}
+
+// ---- 実行状態 ----
+
+export type RunState = { startedAt: number | null; tools: { id: number; name: string }[] }
+
+export function startTurn(now: number): RunState {
+  return { startedAt: now, tools: [] }
+}
+
+export function addTool(s: RunState, id: number, name: string): RunState {
+  return { ...s, tools: [...s.tools, { id, name }] }
+}
+
+export function removeTool(s: RunState, id: number): RunState {
+  return { ...s, tools: s.tools.filter(t => t.id !== id) }
+}
+
+// 最も古い 1 件の名前。2 件以上なら `名前 +n`。
+export function toolLabel(s: RunState): string | null {
+  if (s.tools.length === 0) return null
+  return s.tools.length === 1 ? s.tools[0].name : `${s.tools[0].name} +${s.tools.length - 1}`
+}
+
+// ---- サブエージェント ----
+
+export type AgentRow = {
+  id: string
+  type: string
+  description: string
+  state: 'running' | 'waiting' | 'done'
+  elapsedMs: number | null
+}
+
+function agentState(status: string): AgentRow['state'] {
+  if (status === 'running' || status === 'pending') return 'running'
+  if (status === 'waiting' || status === 'idle') return 'waiting'
+  return 'done'
+}
+
+export function summarizeAgents(
+  list: { id: string; type: string; description: string; status: string }[],
+  startedAt: ReadonlyMap<string, number>,
+  nowMs: number,
+): { running: number; rows: AgentRow[] } {
+  const rows = list.map(a => {
+    const t = startedAt.get(a.id)
+    return { id: a.id, type: a.type, description: a.description, state: agentState(a.status), elapsedMs: t === undefined ? null : nowMs - t }
+  })
+  return { running: rows.filter(r => r.state === 'running').length, rows }
+}
+
+// 0 から 1 以上になったら開く。手で閉じたあとは、0 に戻るまで開き直さない。
+export function nextAgentsOpen(
+  prev: { running: number; closedByUser: boolean },
+  running: number,
+): { open: boolean; closedByUser: boolean } {
+  if (running === 0) return { open: false, closedByUser: false }
+  if (prev.running === 0) return { open: true, closedByUser: false }
+  return { open: !prev.closedByUser, closedByUser: prev.closedByUser }
 }

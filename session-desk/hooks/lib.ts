@@ -2,11 +2,15 @@ const CSI = /\u001b\[[0-9;?]*[ -/]*[@-~]/g
 const OSC = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
 
-// ゼロ幅文字と双方向制御文字（U+200B〜200F、202A〜202E、2066〜2069）。見た目を偽装できるので除く。
+// ゼロ幅文字と双方向制御文字（U+200B〜200F、202A〜202E、2066〜2069）と、BOM・行/段落区切り・ソフトハイフン・ALM（FEFF、2028〜2029、00AD、061C）。見た目を偽装できるので除く。
 const RANGES: readonly (readonly [number, number])[] = [
   [0x200b, 0x200f],
   [0x202a, 0x202e],
   [0x2066, 0x2069],
+  [0xfeff, 0xfeff],
+  [0x2028, 0x2029],
+  [0x00ad, 0x00ad],
+  [0x061c, 0x061c],
 ]
 const INVISIBLE = new RegExp(`[${RANGES.map(([a, b]) => `${String.fromCharCode(a)}-${String.fromCharCode(b)}`).join('')}]`, 'g')
 
