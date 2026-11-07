@@ -1,4 +1,5 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
+import { ICONS } from './band'
 import { nextOf, tidyUrl } from './branch'
 import { renderMore, shownCount } from './more'
 import type { BranchRow, Kind, Next, Stage } from './branch'
@@ -116,7 +117,8 @@ function isNowStage(stage: Stage, row: BranchRow): boolean {
 function stageLine(stage: Stage, row: BranchRow): string {
   const isNow = isNowStage(stage, row)
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
-  const parts = [`${symbol} ${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
+  const icon = stage.label === 'PR' ? `${ICONS.pr} ` : stage.label === 'リリース' ? `${ICONS.release} ` : ''
+  const parts = [`${symbol} ${icon}${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
 
   return parts.filter(part => part !== '').join('  ')
 }
@@ -218,7 +220,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
           <Text dimColor>経過はありません（既定ブランチ）</Text>
           {release !== null && (
             <Box flexDirection="column" marginTop={1}>
-              <Text>{stripControl(`リリース  ${snap.release?.tag ?? ''} 以降 ${snap.release?.ahead ?? 0} 件が、まだリリースされていません`)}</Text>
+              <Text>{stripControl(`${ICONS.release} リリース  ${snap.release?.tag ?? ''} 以降 ${snap.release?.ahead ?? 0} 件が、まだリリースされていません`)}</Text>
               <Box gap={2}>
                 {a.busy ? (
                   <Text dimColor>{release.label}</Text>
@@ -280,7 +282,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
       <Box flexDirection="column">
         <Text bold>{`ブランチ ${snap.branches.length}`}</Text>
         <Box gap={2}>
-          <Text dimColor>ローカル</Text>
+          <Text dimColor>{`${ICONS.local} ローカル`}</Text>
           <Text>{stripControl(snap.cwd)}</Text>
         </Box>
         {remoteLines(snap.remotes).map(line =>
@@ -288,7 +290,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
             <Text dimColor>{stripControl(line.text)}</Text>
           ) : (
             <Box gap={2}>
-              <Text dimColor>リモート</Text>
+              <Text dimColor>{`${ICONS.remote} リモート`}</Text>
               <Text color="suggestion">{stripControl(line.name)}</Text>
               <Text>{linkOf(Link, stripControl(line.url))}</Text>
             </Box>

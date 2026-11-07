@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, BRANCH_COLOR, classifyCategory, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, BRANCH_COLOR, classifyCategory, ICONS, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
@@ -145,6 +145,9 @@ let toolSeq = 0
 const forkGuard = { seq: 0, id: null as number | null, userSent: false }
 const FORK_TIMEOUT_MS = 30_000
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
+
+// タブの名前の前のアイコン。
+const TAB_ICON: Record<Tab, string> = { quick: ICONS.quick, history: ICONS.history, git: ICONS.git }
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
@@ -963,10 +966,12 @@ export const register: Register = on => {
                 {TABS.map(item =>
                   current === item.id ? (
                     <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
-                      <Text bold underline color={BRANCH_COLOR}>{item.label}</Text>
+                      <Text bold underline color={BRANCH_COLOR}>{`${TAB_ICON[item.id]} ${item.label}`}</Text>
                     </Button>
                   ) : (
-                    <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
+                    <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)}>
+                      <Text dimColor>{`${TAB_ICON[item.id]} ${item.label}`}</Text>
+                    </Button>
                   ),
                 )}
               </Box>

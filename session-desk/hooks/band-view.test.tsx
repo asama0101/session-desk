@@ -56,19 +56,19 @@ const CTX = (percent: number) => ({
 
 test('goal shows when set and nothing when null', async () => {
   expect(texts({ goal: 'G' })).toContain('G')
-  expect(texts({ goal: null }).join('')).not.toContain('ゴール')
+  expect(texts({ goal: null }).join('')).not.toContain('🎯 ゴール')
 })
 
 test('running shows the tool and elapsed as separate texts', async () => {
   const t = texts({ run: { state: 'running', tool: 'Bash', elapsedMs: 42_000 } })
-  expect(t).toContain('実行中 Bash')
+  expect(t).toContain('⚡ 実行中 Bash')
   expect(t).toContain('0m42s')
 })
 
 test('stopped shows the last turn; stop reasons', async () => {
   const run = { state: 'stopped' as const, tool: null, elapsedMs: null }
   const t = texts({ run, lastTurn: { durationMs: 102_000, tokens: 18_000 } })
-  expect(t).toContain('停止中')
+  expect(t).toContain('💤 停止中')
   expect(t).toContain('直近 1m42s')
   expect(t).toContain('18k tokens')
   expect(texts({ run, stop: 'error' })).toContain('エラーで停止')
@@ -113,18 +113,18 @@ test('model, context percent colors and tokens; null context omits the line', as
   expect(textsOf(c86)).toContain('860k / 1M')
   expect(colorOf(draw({ context: CTX(59) }), '59%')).toBe('success')
   expect(colorOf(draw({ context: CTX(60) }), '60%')).toBe('warning')
-  expect(texts({ context: null }).join('')).not.toContain('コンテキスト')
+  expect(texts({ context: null }).join('')).not.toContain('📊 コンテキスト')
   expect(JSON.stringify(c86)).toContain('█')
 })
 
 test('limits, git, and omitted lines', async () => {
   const t = texts({ limits: [{ label: '5時間枠', percent: 32, remaining: '3h 10m' }, { label: '7日枠', percent: 10, remaining: null }] })
-  for (const w of ['5時間枠', '32%', '3h 10m', '7日枠', '10%']) expect(t).toContain(w)
+  for (const w of ['⏳ 5時間枠', '32%', '3h 10m', '📅 7日枠', '10%']) expect(t).toContain(w)
   expect(texts().join('')).not.toContain('枠')
   expect(texts({ git: null }).join('')).not.toContain('commit')
   expect(texts({ git: { branch: 'main', dirtyCount: 3 } })).toContain('未 commit 3')
   expect(texts({ git: { branch: 'main', dirtyCount: null } }).join('')).not.toContain('未 commit')
-  expect(texts({ git: { branch: null, dirtyCount: null } })).toContain('(detached)')
+  expect(texts({ git: { branch: null, dirtyCount: null } })).toContain('🌿 (detached)')
 })
 
 const BREAKDOWN = (compact: number | null = 40_000) => ({
@@ -186,7 +186,7 @@ test('the context bar fills the width: columns - 2 cells (min 8), 24 when column
 test('the context numbers sit at the right end of the label row', async () => {
   const row = find(draw({ context: CTX(86) }), n => n.props?.justifyContent === 'space-between')[0]
   expect(row).toBeDefined()
-  expect(textsOf(row)).toEqual(['コンテキスト', '86%', '860k / 1M'])
+  expect(textsOf(row)).toEqual(['📊 コンテキスト', '86%', '860k / 1M'])
 })
 
 test('limits draw a bar each: filled by percent, green / yellow / red', async () => {
@@ -207,15 +207,15 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
 })
 
 test('the header reads model / effort, with the effort coloured by level; no effort leaves just the model', async () => {
-  const head = (effort: string | null) => find(draw({ model: 'Opus 5.5', effort, context: CTX(50) }), n => n.type === 'Box' && textsOf(n)[0] === 'Opus 5.5')[0]
-  expect(textsOf(head('high'))).toEqual(['Opus 5.5', '/', 'high'])
+  const head = (effort: string | null) => find(draw({ model: 'Opus 5.5', effort, context: CTX(50) }), n => n.type === 'Box' && textsOf(n)[1] === 'Opus 5.5')[0]
+  expect(textsOf(head('high'))).toEqual(['🤖', 'Opus 5.5', '/', 'high'])
   const color = (effort: string) => find(head(effort), n => n.type === 'Text' && n.children[0] === effort)[0]
   expect(color('high').props.color).toBe('#4fd6e0')
   expect(color('low').props.color).toBe('#8a8f9c')
   expect(color('medium').props.color).toBeUndefined()
   expect(color('max').props.bold).toBe(true)
   expect(color('weird').props.color).toBeUndefined()
-  expect(textsOf(head(null))).toEqual(['Opus 5.5'])
+  expect(textsOf(head(null))).toEqual(['🤖', 'Opus 5.5'])
   // モデルが分からなければ、effort だけは出さない。
   expect(textsOf(draw({ model: null, effort: 'high', context: CTX(50) })).includes('high')).toBe(false)
 })
@@ -230,17 +230,17 @@ test('a raw model id is shown as the name people read, in the colour of its fami
 
 test('the directory is a dim line right under the header; it keeps the tail when it is too long; null leaves it out', async () => {
   const lines = (over: object) => textsOf(draw({ model: 'Opus 5.5', context: CTX(50), ...over }))
-  expect(lines({ cwd: 'D:/p' }).slice(0, 3)).toEqual(['Session', 'Opus 5.5', 'D:/p'])
-  expect(lines({ cwd: null })).not.toContain('D:/p')
+  expect(lines({ cwd: 'D:/p' }).slice(0, 4)).toEqual(['Session', '🤖', 'Opus 5.5', '📁 D:/p'])
+  expect(lines({ cwd: null })).not.toContain('📁 D:/p')
   const long = 'D:/claude/local-repo/session-desk/session-desk'
-  const cut = lines({ cwd: long, columns: 30 })[2] as string
-  expect(cut.startsWith('…')).toBe(true)
+  const cut = lines({ cwd: long, columns: 30 })[3] as string
+  expect(cut.startsWith('📁 …')).toBe(true)
   expect(cut.endsWith('session-desk')).toBe(true)
-  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === 'D:/p')[0].props.dimColor).toBe(true)
+  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === '📁 D:/p')[0].props.dimColor).toBe(true)
 })
 
 test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
-  expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), 'main')).toBe(BRANCH_COLOR)
+  expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), '🌿 main')).toBe(BRANCH_COLOR)
   const model = (name: string) => find(draw({ model: name }), n => n.type === 'Text' && n.children[0] === name)[0]
   expect(model('Opus 5.5').props.color).toBe(modelColor('opus'))
   expect(model('Opus 5.5').props.bold).toBe(true)
@@ -252,7 +252,7 @@ test('the panel has no outer frame: it is headed Session + model; sections are s
   const steps = { items: ['a', 'b'], reason: 'R', recommended: null }
   const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 }, steps, between: { type: 'Text', props: {}, children: ['TABS'] } as any })
   expect(find(tree, n => n.props?.borderStyle !== undefined)).toHaveLength(0)
-  expect(textsOf(tree).slice(0, 2)).toEqual(['Session', 'Opus 5.5'])
+  expect(textsOf(tree).slice(0, 3)).toEqual(['Session', '🤖', 'Opus 5.5'])
   expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginTop).toBeUndefined()
   expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginY).toBeUndefined()
   // 見出しと最初の段のあいだに線も空きも無い（見出しは最初の段の一部）。段と段のあいだに細い線、提案の前に二重線。
@@ -302,7 +302,7 @@ test('steps: framed list with numbers, (推奨) on the recommended row only, nul
   const pick = draw({ steps: { items, reason: '理由R', recommended: 1 } })
   expect(labelsOf(pick)).toEqual(expect.arrayContaining(items))
   expect(byKey(pick, 'band-step-0')).toBeDefined()
-  expect(textsOf(pick).join('|')).toContain('提案')
+  expect(textsOf(pick).join('|')).toContain('💡 提案')
   expect(textsOf(pick).join('|')).toContain('理由R')
   // 番号と推奨の印は、ボタンの中の Text。
   const inside = find(pick, n => n.type === 'Text').flatMap(n => n.children.filter(c => typeof c === 'string') as string[])
@@ -316,7 +316,7 @@ test('steps: framed list with numbers, (推奨) on the recommended row only, nul
   expect(JSON.stringify(pick)).not.toContain('本当に送りますか')
   expect(find(pick, n => n.props?.borderColor === 'error')).toHaveLength(0)
   expect(JSON.stringify(draw({ steps: { items, reason: '理由R', recommended: null } }))).not.toContain('(推奨)')
-  expect(texts({ steps: null }).join('')).not.toContain('提案')
+  expect(texts({ steps: null }).join('')).not.toContain('💡 提案')
   expect(labels({ steps: null })).toEqual([])
 })
 
@@ -329,7 +329,7 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
     expect(joined).not.toContain('‮')
     expect(JSON.stringify(tree)).not.toContain('\u001b')
     expect(JSON.stringify(tree)).not.toContain('\u202e')
-    for (const w of expected) expect(all).toContain(w)
+    for (const w of expected) expect(all.some(x => x.includes(w))).toBe(true)
   }
   const base = {
     goal: bad('goal'),
@@ -344,4 +344,23 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
   check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), recommended: 0 } }), [
     'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
   ])
+})
+
+test('every row of the band starts with its icon', async () => {
+  const t = textsOf(
+    draw({
+      model: 'Opus 5.5',
+      effort: 'high',
+      cwd: 'D:/p',
+      goal: 'G',
+      run: { state: 'stopped', tool: null, elapsedMs: null },
+      context: CTX(50),
+      limits: [{ label: '5時間枠', percent: 32, remaining: null }, { label: '7日枠', percent: 10, remaining: null }],
+      git: { branch: 'main', dirtyCount: 0 },
+      steps: { items: ['a'], reason: 'R', recommended: null },
+    }),
+  )
+  for (const text of ['🤖', '📁 D:/p', '🎯 ゴール', '💤 停止中', '📊 コンテキスト', '⏳ 5時間枠', '📅 7日枠', '🌿 main', '💡 提案']) expect(t).toContain(text)
+  const running = textsOf(draw({ run: { state: 'running', tool: 'Bash', elapsedMs: 1000 } }))
+  expect(running).toContain('⚡ 実行中 Bash')
 })

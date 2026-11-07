@@ -33,8 +33,8 @@
 
   <!-- 見出しとリモート -->
   <text x="424" y="116" fill="#d4d4d4" font-weight="bold">ブランチ 3</text>
-  <text x="424" y="138" fill="#858585">ローカル</text><text x="496" y="138" fill="#d4d4d4">D:\claude\local-repo\session-desk</text>
-  <text x="424" y="160" fill="#858585">リモート</text><text x="496" y="160" fill="#b1b9f9">origin</text><text x="556" y="160" fill="#4fd6e0" text-decoration="underline">github.com/asama0101/session-desk</text>
+  <text x="424" y="138" fill="#858585">💻 ローカル</text><text x="522" y="138" fill="#d4d4d4">D:\claude\local-repo\session-desk</text>
+  <text x="424" y="160" fill="#858585">🌐 リモート</text><text x="522" y="160" fill="#b1b9f9">origin</text><text x="582" y="160" fill="#4fd6e0" text-decoration="underline">github.com/asama0101/session-desk</text>
 
   <!-- 一覧（右端が「今」。選択中は太字） -->
   <text x="424" y="192" fill="#b1b9f9" font-weight="bold">＊feat feat/login  ↑2  次: push</text>
@@ -51,9 +51,9 @@
   <text x="934" y="334" fill="#858585" text-anchor="end">11/07 14:20</text>
   <text x="424" y="356" fill="#f2c94c">├</text><text x="446" y="356" fill="#f2c94c" font-weight="bold">● push  次: push</text>
   <text x="934" y="356" fill="#b1b9f9" font-weight="bold" text-anchor="end">▶ push する</text>
-  <text x="424" y="378" fill="#5a5a5a">├</text><text x="446" y="378" fill="#858585">○ PR</text>
+  <text x="424" y="378" fill="#5a5a5a">├</text><text x="446" y="378" fill="#858585">○ 🔗 PR</text>
   <text x="424" y="400" fill="#5a5a5a">├</text><text x="446" y="400" fill="#858585">○ マージ</text>
-  <text x="424" y="422" fill="#5a5a5a">├</text><text x="446" y="422" fill="#858585">○ リリース</text>
+  <text x="424" y="422" fill="#5a5a5a">├</text><text x="446" y="422" fill="#858585">○ 🚀 リリース</text>
   <text x="424" y="444" fill="#5a5a5a">└</text><text x="446" y="444" fill="#858585">○ 削除</text>
 
   <!-- 最後に読んだ時刻 -->

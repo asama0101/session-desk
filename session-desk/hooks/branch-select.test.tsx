@@ -107,7 +107,7 @@ test('choosing a row reads the dates of that branch only', async ($, on) => {
   await ui.press({ key: 'branch-docs/b' })
   await settle(e.calls)
   expect(e.calls).toContain(reflog('docs/b'))
-  expect(await texts(ui)).toContain('● PR  次: PR を作る')
+  expect(await texts(ui)).toContain('● 🔗 PR  次: PR を作る')
   await ui.unmount()
 })
 
@@ -117,7 +117,7 @@ test('when the chosen branch disappears, the screen goes back to the current bra
   const ui = await open($, e.calls)
   await ui.press({ key: 'branch-docs/b' })
   await settle(e.calls)
-  expect(await texts(ui)).toContain('● PR  次: PR を作る')
+  expect(await texts(ui)).toContain('● 🔗 PR  次: PR を作る')
   e.cfg.refs = REFS_NO_DOCS
   await $.tool.call({ tool: 'Bash', command: 'git branch -d docs/b' })
   await settle(e.calls)

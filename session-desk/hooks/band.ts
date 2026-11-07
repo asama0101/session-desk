@@ -69,6 +69,30 @@ export function modelColor(name: string): string {
   return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
 }
 
+// 行の頭に付けるアイコン。どれも、端末で 2 桁に描かれる絵文字（Emoji_Presentation）に限る（⏸ や ☁ のような、1 桁か 2 桁か分からないものは使わない）。
+export const ICONS = {
+  model: '🤖',
+  dir: '📁',
+  goal: '🎯',
+  stopped: '💤',
+  running: '⚡',
+  context: '📊',
+  fiveHour: '⏳',
+  sevenDay: '📅',
+  branch: '🌿',
+  quick: '💬',
+  history: '🕘',
+  git: '🔀',
+  suggest: '💡',
+  local: '💻',
+  remote: '🌐',
+  release: '🚀',
+  pr: '🔗',
+} as const
+
+// アイコンの幅（桁）。絵文字は 2 桁、後ろの空白が 1 桁。
+export const ICON_CELLS = 3
+
 // モデルの id（claude-sonnet-5-5 など）を、人が読む名前（Sonnet 5.5）にする。分からない形は、そのまま返す。末尾の [1m] は (1M) にする。
 export function prettyModel(id: string): string {
   const ctx = /\[(\w+)\]$/.exec(id)
