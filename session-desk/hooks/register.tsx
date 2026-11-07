@@ -151,7 +151,7 @@ export const register: Register = on => {
     }
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" gap={1}>
         <Box gap={2}>
           {TABS.map(item =>
             current === item.id ? (

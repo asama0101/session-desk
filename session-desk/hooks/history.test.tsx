@@ -146,6 +146,17 @@ test('the panel opens on 定型文; the selected tab is marked with ▸ and draw
   await ui.unmount()
 })
 
+test('one blank row separates the tabs from the body, on both tabs', async ($, on) => {
+  fakeEngine(on)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const root = async () => (await ui.drawn()) as { props?: { flexDirection?: string; gap?: number } }
+  // 定型文タブ（初期表示）と、履歴タブの両方で、全体は縦並びで、タブと本文の間に 1 行（gap 1）がある。
+  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  await ui.press({ key: 'tab-history' })
+  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  await ui.unmount()
+})
+
 test('history shows a note when nothing was sent', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
