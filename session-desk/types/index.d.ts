@@ -46,8 +46,7 @@ declare module 'claude-code' {
       }
       bandUi: { exact: boolean; detail: string[] }
       more: { quick: boolean; history: boolean; git: boolean }
-      releaseSkip: string | null
-      releaseSkipped: string[]
+      releaseSkip: string[]
       branchSel: string | null
     }
   }

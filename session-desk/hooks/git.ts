@@ -2,6 +2,7 @@
 import {
   adoptPr,
   buildRow,
+  releaseKey,
   defaultBranchOf,
   isDirty,
   kindOf,
@@ -32,7 +33,7 @@ export type Snapshot = {
   baseRef: string | null
   // `git remote -v` の結果。取れなかったときは null。
   remotes: Remote[] | null
-  // 既定ブランチをチェックアウトしているときだけ、最新のタグと、それ以降の commit の数。タグがない・取れないときは null。
+  // origin の既定ブランチ（なければ手元の既定ブランチ）の、最新のタグと、それ以降の commit の数。どのブランチにいても求める。タグがない・取れないときは null。
   release: { tag: string; ahead: number } | null
   branches: BranchRow[]
   warnings: string[]
@@ -114,14 +115,14 @@ async function ancestry(run: Run, ref: string, oid: string): Promise<Relation> {
 const newestClosed = (prs: readonly Pr[]) =>
   prs.filter(p => p.state !== 'OPEN' && !p.isCrossRepository).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
 
-// 既定ブランチから届く最新のタグと、そのタグ以降の commit の数。
-async function releaseOf(run: Run, defaultName: string): Promise<{ tag: string; ahead: number } | null> {
-  const described = await git(run, 'describe', '--tags', '--abbrev=0', `refs/heads/${defaultName}`)
+// ref（origin の既定ブランチ）から届く最新のタグと、そのタグ以降の commit の数。手元の main ではなく origin で数えるので、pull の前後で数が変わらない。
+async function releaseOf(run: Run, ref: string): Promise<{ tag: string; ahead: number } | null> {
+  const described = await git(run, 'describe', '--tags', '--abbrev=0', ref)
   const tag = usable(described) ? stripControl(described.stdout.trim()) : ''
   if (tag === '') {
     return null
   }
-  const ahead = await countOf(run, `refs/tags/${tag}..refs/heads/${defaultName}`)
+  const ahead = await countOf(run, `refs/tags/${tag}..${ref}`)
 
   return ahead === null ? null : { tag, ahead }
 }
@@ -202,8 +203,9 @@ export async function collect(
   const tagRes = await git(run, 'for-each-ref', '--sort=-creatordate', '--count=1', '--format=%(creatordate:iso-strict)', 'refs/tags')
   const tags: Facts['tags'] = { known: usable(tagRes), latestAt: usable(tagRes) && tagRes.stdout.trim() !== '' ? tagRes.stdout.trim() : null }
 
-  // 未リリースの commit（既定ブランチにいるときだけ。git を 2 本使う）
-  const release = defaultName !== null && currentName === defaultName && oidOf.has(defaultName) ? await releaseOf(run, defaultName) : null
+  // 未リリースの commit（git を 2 本使う）。「今はしない」の目印にも使う。
+  const release = baseRef !== null ? await releaseOf(run, baseRef) : null
+  const releaseSkipped = opts.releaseSkips?.includes(releaseKey(release)) === true
 
   // PR（gh）
   let prs: Pr[] | null = null
@@ -289,7 +291,7 @@ export async function collect(
       hasRemote,
       originDiff,
       tags,
-      releaseSkipped: opts.releaseSkips?.includes(name) === true,
+      releaseSkipped,
     }
     built.set(name, buildRow(stripControl(name), kindOf(name, defaultName), name === currentName, facts))
   }

@@ -43,6 +43,23 @@ export function parseQuick(raw: unknown): string[] | null {
   return [...raw]
 }
 
+// 「今はしない」の目印を残す数。古い状態の目印は二度と一致しないので、新しいほうだけ残す。
+const SKIP_KEEP = 20
+
+// ストアから読んだ値が、文字列の配列のときだけ、新しいほう SKIP_KEEP 件を返す。外から来る値なので検証する。
+export function parseSkips(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+
+  return raw.filter((item): item is string => typeof item === 'string' && item !== '').slice(-SKIP_KEEP)
+}
+
+// 目印を足す（同じものは足さない）。SKIP_KEEP 件を超えたら古いほうから捨てる。
+export function addSkip(list: readonly string[], key: string): string[] {
+  return list.includes(key) ? [...list] : [...list, key].slice(-SKIP_KEEP)
+}
+
 export function addQuick(list: readonly string[], text: string): string[] {
   const clean = stripControl(text).trim()
 

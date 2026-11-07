@@ -292,6 +292,11 @@ export function adoptPr(prs: readonly Pr[], relation: (pr: Pr) => Relation): { p
   return { pr: null, known: !closed.some(p => relation(p) === 'unknown') }
 }
 
+// リリースの状態の目印（最新のタグと、そこからの commit 数）。「今はしない」は、この目印で覚える。状態が変わると目印も変わり、また聞く。タグがないときは固定。
+export function releaseKey(release: { tag: string; ahead: number } | null): string {
+  return release === null ? 'release:none' : `release:${release.tag}:${release.ahead}`
+}
+
 export type Remote = { name: string; url: string }
 
 // 画面に出す URL。スキームと末尾の .git を落とし、ユーザー名やトークン（user:token@）は必ず除く。

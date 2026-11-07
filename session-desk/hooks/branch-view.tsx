@@ -1,6 +1,6 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
 import { ICONS } from './band'
-import { nextOf, tidyUrl } from './branch'
+import { nextOf, releaseKey, tidyUrl } from './branch'
 import { renderMore, shownCount } from './more'
 import type { BranchRow, Kind, Next, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
@@ -141,10 +141,8 @@ type Args = {
   more: { open: boolean; onToggle(): void }
   // 「次へ進む」ボタンを押したとき。
   onNext(next: Next): void
-  // 「リリースしますか」の「今はしない」。skippedKey は、しないと答えた状態の key（状態が変わると、また出る）。
-  release: { skippedKey: string | null; onSkip(key: string): void }
-  // リリースの段階の「今はしない」。そのブランチの、リリースの段階を飛ばす。
-  onSkipRelease(name: string): void
+  // 「今はしない」。しないと答えた状態の目印（releaseKey）の一覧。リリースの質問（既定ブランチ）と、リリースの段階（マージ済みのブランチ）の両方で、同じ一覧を使う。状態が変わると目印が変わり、また聞く。
+  release: { skipped: readonly string[]; onSkip(key: string): void }
   // Claude が動いている間は真。ボタンは押せない（質問や許可の待ちと、依頼が衝突しないように）。
   busy: boolean
 }
@@ -203,12 +201,12 @@ export function renderBranchTab(ui: Ui, a: Args) {
   const pending =
     snap.release !== null && snap.release.ahead > 0 && chosen !== undefined && chosen.kind === 'default' && chosen.isCurrent
       ? {
-          key: `release:${snap.release.tag}:${snap.release.ahead}`,
+          key: releaseKey(snap.release),
           label: '▶ リリースする',
           prompt: `${chosen.name} の未リリースの変更（${snap.release.tag} 以降 ${snap.release.ahead} 件）をリリースしてください（version を上げる PR、タグ、Release の順）`,
         }
       : null
-  const release: Next | null = pending !== null && a.release.skippedKey !== pending.key ? pending : null
+  const release: Next | null = pending !== null && !a.release.skipped.includes(pending.key) ? pending : null
 
   const detail = (
     <Box flexDirection="column">
@@ -255,7 +253,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
                 {date !== '' && <Text dimColor>{date}</Text>}
                 {isNow && chosen.now.id === MERGE_STAGE && prLink !== null && <Text>{linkOf(Link, prLink.text, prLink.href)}</Text>}
                 {isNow && chosen.now.id === RELEASE_STAGE && next !== null && (
-                  <Button key="git-stage-release-skip" plain label="今はしない" onPress={() => a.onSkipRelease(chosen.name)}>
+                  <Button key="git-stage-release-skip" plain label="今はしない" onPress={() => a.release.onSkip(releaseKey(snap.release))}>
                     <Text>今はしない</Text>
                   </Button>
                 )}
