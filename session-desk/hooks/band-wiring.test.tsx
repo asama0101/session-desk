@@ -23,7 +23,7 @@ const settle = async () => {
 
 // エンジンの代わり。tool.call は gate が立っている間、完了を待たせる。
 // opts.ticks: clock.every の周期を、その回数だけ通してから拒否する（拒否で周期が止まる）。opts.placed: パネルが置かれているか。
-function engine(on: any, status = '?? a\0?? b\0?? c\0', opts: { ticks?: number; placed?: boolean } = {}) {
+function engine(on: any, status = '?? a\0?? b\0?? c\0', opts: { ticks?: number; placed?: boolean; toastThrows?: boolean } = {}) {
   const gate = { hold: null as null | Promise<void>, seen: [] as string[], toasts: [] as string[] }
   let ticks = opts.ticks ?? 0
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
@@ -32,6 +32,9 @@ function engine(on: any, status = '?? a\0?? b\0?? c\0', opts: { ticks?: number; 
   on('session.cwd', () => ({ value: 'D:/p' }))
   on('ui.toast', (_: any, e: any) => {
     gate.toasts.push(e.text)
+    if (opts.toastThrows) {
+      throw new Error('toast refused')
+    }
 
     return { value: undefined }
   })
@@ -352,11 +355,11 @@ test('a spawned running agent opens the list; closing keeps it closed on the nex
   t = await draw(ui)
   expect(t).toContain('サブエージェント')
   expect(t).not.toContain('look around')
-  await $.turn.complete(done())
+  await $.turn.complete(done({ turnId: 't2' }))
   await settle()
   expect(await draw(ui)).not.toContain('look around')
   data.list = []
-  await $.turn.complete(done())
+  await $.turn.complete(done({ turnId: 't2' }))
   await settle()
   t = await draw(ui)
   expect(t).not.toContain('サブエージェント')
@@ -803,5 +806,73 @@ test('the exact count stays, labelled 正確, through summary fetches until the 
   expect(t).toContain('500k')
   expect(t).toContain('概算')
   expect(t).not.toContain('正確')
+  await ui.unmount()
+})
+
+test('a new session start drops an exact count from before; the next fetch brings the summary back with the label 概算', async ($, on) => {
+  engine(on)
+  const exact = withBreakdown({}, [cat('Messages', 'used', 300000), cat('Free space', 'free', 700000)])
+  fakeData(on, { usage: (e: any) => (e.breakdown === 'full' ? exact : withBreakdown()) })
+  const ui = await openBreakdown($)
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  let t = await draw(ui)
+  expect(t).toContain('正確')
+  expect(t).toContain('300k')
+  await start($)
+  await settle()
+  t = await draw(ui)
+  expect(t).not.toContain('正確')
+  expect(t).not.toContain('300k')
+  await $.turn.complete(done())
+  await settle()
+  t = await draw(ui)
+  expect(t).not.toContain('正確')
+  expect(t).toContain('概算')
+  expect(t).toContain('500k')
+  await ui.unmount()
+})
+
+test('a full call that returns no breakdown counts as a failure: toast, summary numbers kept, 概算', async ($, on) => {
+  const gate = engine(on)
+  const calls: any[] = []
+  fakeData(on, {
+    usage: (e: any) => {
+      calls.push(e)
+
+      return e.breakdown === 'full' ? { startedAt: 0, context: { window: 1000000, tokens: 1, percent: 1 }, rateLimits: [] } : withBreakdown()
+    },
+  })
+  const ui = await openBreakdown($)
+  calls.length = 0
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  expect(calls.map(c => c.breakdown)).toEqual(['full', 'summary'])
+  expect(gate.toasts).toEqual(['正確な数え直しに失敗しました'])
+  const t = await draw(ui)
+  expect(t).toContain('概算')
+  expect(t).not.toContain('正確')
+  expect(t).toContain('500k')
+  await ui.unmount()
+})
+
+test('a toast that fails to show does not stop the 正確に数える button from working again', async ($, on) => {
+  const calls: any[] = []
+  engine(on, undefined, { toastThrows: true })
+  fakeData(on, {
+    usage: (e: any) => {
+      calls.push(e)
+      if (e.breakdown === 'full') throw new Error('full failed')
+
+      return withBreakdown()
+    },
+  })
+  const ui = await openBreakdown($)
+  calls.length = 0
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  await ui.press({ key: 'band-exact' })
+  await settle()
+  expect(calls.filter(c => c.breakdown === 'full').length).toBe(2)
   await ui.unmount()
 })

@@ -191,14 +191,19 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     try {
       usage = await $.session.usage({ breakdown: exact ? 'full' : 'summary' })
     } catch {
-      // 取れなければ、コンテキストと上限は出さない。正確に数える失敗のときは、概算で読み直して帯を保つ。
-      if (exact) {
-        fullOk = false
-        try {
-          usage = await $.session.usage({ breakdown: 'summary' })
-        } catch {
-          // 概算も取れないときは出さない。
-        }
+      // 取れなければ、コンテキストと上限は出さない。
+      fullOk = false
+    }
+    // 正確に数えた結果に内訳が無いときも失敗として扱う（空の内訳が「正確」のまま残らないように）。
+    if (exact && fullOk && !Array.isArray(usage?.context?.breakdown?.categories)) {
+      fullOk = false
+    }
+    // 正確に数えるのに失敗したときは、概算で読み直して帯を保つ。
+    if (exact && !fullOk) {
+      try {
+        usage = await $.session.usage({ breakdown: 'summary' })
+      } catch {
+        usage = null
       }
     }
     let model: string | null = null
@@ -305,7 +310,10 @@ async function countExactly($: any) {
   }
   try {
     if (!(await fetchBandData($, true))) {
-      $.ui.toast('正確な数え直しに失敗しました')
+      // 出せなくても、数え直しの結果には関係しない。
+      void Promise.resolve()
+        .then(() => $.ui.toast('正確な数え直しに失敗しました'))
+        .catch(() => {})
     }
   } finally {
     await update($, bandUi, v => ({ ...v, exact: false })).catch(() => {})
@@ -611,6 +619,11 @@ export const register: Register = on => {
     if (forkGuard.id !== null) {
       return next(e)
     }
+    // 開始を見ていないターンの完了（時間切れのあとに遅れて届いた fork 自身のものなど）は、本物のターンとして扱わない。
+    const seenTurn = e.agentId === undefined ? (await read($, band)).turnId : null
+    if (seenTurn !== null && seenTurn !== e.turnId) {
+      return next(e)
+    }
     if (e.agentId === undefined) {
       const tokens = (e.usage?.input_tokens ?? 0) + (e.usage?.output_tokens ?? 0)
       const stop = e.reason === 'answer' ? null : e.reason
@@ -631,6 +644,8 @@ export const register: Register = on => {
     forkGuard.userSent = false
     bandFetch.running = false
     bandFetch.again = false
+    // 前のセッションの正確な内訳は、「正確」のまま残さない。内訳は空にして、次の取得で概算が入る。
+    await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false, breakdown: null } : v)).catch(() => {})
     desk.timer?.cancel()
     desk.refresher = createRefresher({
       // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
