@@ -2,9 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, limitRows, nextAgentsOpen, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, classifyCategory, compactIn, limitRows, nextAgentsOpen, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
+import type { BandArgs } from './band-view'
 import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
@@ -174,14 +175,21 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
 }
 
 // モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。
-// 「正確に数える」（exact）は後続のタスクで足すので、今は常に概算（summary）で読む。
-async function fetchBandData($: any, _exact: boolean): Promise<void> {
+// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。
+async function fetchBandData($: any, exact: boolean): Promise<void> {
   try {
     let usage: any = null
     try {
-      usage = await $.session.usage({ breakdown: 'summary' })
+      usage = await $.session.usage({ breakdown: exact ? 'full' : 'summary' })
     } catch {
-      // 取れなければ、コンテキストと上限は出さない。
+      // 取れなければ、コンテキストと上限は出さない。正確に数える失敗のときは、概算で読み直して帯を保つ。
+      if (exact) {
+        try {
+          usage = await $.session.usage({ breakdown: 'summary' })
+        } catch {
+          // 概算も取れないときは出さない。
+        }
+      }
     }
     let model: string | null = null
     try {
@@ -236,8 +244,28 @@ async function fetchBandData($: any, _exact: boolean): Promise<void> {
 }
 
 // 取得は待たない。フックの結果に影響させない。
-function refetch($: any) {
-  void fetchBandData($, false).catch(() => {})
+function refetch($: any, exact = false) {
+  void fetchBandData($, exact).catch(() => {})
+}
+
+// 「正確に数える」: full で 1 回だけ読み、成功しても失敗しても exact を戻す。
+async function countExactly($: any) {
+  try {
+    await update($, bandUi, v => ({ ...v, exact: true }))
+    await fetchBandData($, true)
+  } catch {
+    // atom を更新できなくても、フックを失敗させない。
+  } finally {
+    await update($, bandUi, v => ({ ...v, exact: false })).catch(() => {})
+  }
+}
+
+async function toggleBreakdown($: any) {
+  await update($, bandUi, v => ({ ...v, breakdown: !v.breakdown }))
+}
+
+async function toggleDetail($: any, id: string) {
+  await update($, bandUi, v => ({ ...v, detail: v.detail.includes(id) ? v.detail.filter(d => d !== id) : [...v.detail, id] }))
 }
 
 // サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
@@ -258,6 +286,62 @@ function partsOf(breakdown: { categories: { name: string; kind: string; tokens: 
   }
 
   return [...sums].map(([id, tokens]) => ({ id, tokens }))
+}
+
+const CATEGORY_NAMES: Record<CategoryId, string> = {
+  messages: 'メッセージ',
+  mcp: 'MCP ツール',
+  systemTools: 'システムツール',
+  systemPrompt: 'システムプロンプト',
+  memory: 'メモリファイル',
+  skills: 'スキル',
+  other: 'その他',
+  free: '空き',
+}
+
+// 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
+function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }): BandArgs['breakdown'] {
+  if (bd === null) {
+    return null
+  }
+  if (!ui.breakdown) {
+    return { open: false, rows: [], compactIn: null, threshold: null }
+  }
+  const sums = new Map<CategoryId, number>()
+  let used = 0
+  for (const c of bd.categories as { name: string; kind: string; tokens: number }[]) {
+    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
+    sums.set(id, (sums.get(id) ?? 0) + c.tokens)
+    used += c.kind === 'used' ? c.tokens : 0
+  }
+  const lists: Partial<Record<CategoryId, { name: string; tokens: number }[]>> = { mcp: bd.mcpTools, memory: bd.memoryFiles, skills: bd.skills }
+  const percentOf = (tokens: number) => {
+    const p = bd.rawMaxTokens > 0 ? (tokens / bd.rawMaxTokens) * 100 : 0
+
+    return p < 10 ? Math.round(p * 10) / 10 : Math.round(p)
+  }
+  const rows = [...sums]
+    .filter(([, tokens]) => tokens > 0)
+    .sort(([a, x], [b, y]) => (a === 'free' ? 1 : b === 'free' ? -1 : y - x))
+    .map(([id, tokens]) => {
+      const list = lists[id]
+
+      return {
+        id,
+        name: CATEGORY_NAMES[id],
+        tokens,
+        percent: percentOf(tokens),
+        detail: list !== undefined && list.length > 0 ? [...list].sort((p, q) => q.tokens - p.tokens) : null,
+        detailOpen: ui.detail.includes(id),
+      }
+    })
+
+  return {
+    open: true,
+    rows,
+    compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
+    threshold: bd.autoCompactThreshold ?? null,
+  }
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
@@ -592,11 +676,11 @@ export const register: Register = on => {
           agents: { running: ag.running, rows: ag.rows, open: ag.open },
           model: u.model,
           context: u.context === null ? null : { ...u.context, parts: partsOf(u.breakdown) },
-          breakdown: null,
+          breakdown: breakdownArgs(u.breakdown, await read($, bandUi)),
           limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
           steps: null,
-          on: { toggleBreakdown() {}, toggleAgents: () => void toggleAgents($), exact() {}, toggleDetail() {}, pick() {}, confirm() {}, cancel() {} },
+          on: { toggleBreakdown: () => void toggleBreakdown($).catch(() => {}), toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick() {}, confirm() {}, cancel() {} },
           columns: e.props.bodyColumns,
         })}
         {body}
