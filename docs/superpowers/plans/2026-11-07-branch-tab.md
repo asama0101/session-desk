@@ -1,5 +1,7 @@
 # 「ブランチ」タブ Implementation Plan
 
+> **古い記録。** 作った時点の計画・設計で、その後に変わった（タブの名前は「Git」、段階は 8、ボタンや見た目など）。今の仕様は README と docs の図を見る。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Session Desk に、ブランチの一覧と、選んだブランチの段階ごとの経過（済・今・次）を見せる 3 つ目のタブ「ブランチ」を足す。

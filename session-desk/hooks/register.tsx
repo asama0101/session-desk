@@ -136,6 +136,9 @@ async function readEffort($: any, cwd: string | null): Promise<string | null> {
   return null
 }
 
+// effort の読み取りの結果。取得のたびに設定ファイルまで読み直さないように、ターンの始まりとセッションの始まりまで使い回す。
+let effortCache: { cwd: string | null; value: string | null } | null = null
+
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
 const bandFetch = { running: false, again: false }
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
@@ -278,7 +281,10 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     } catch {
       // ディレクトリは出さない。
     }
-    const effort = await readEffort($, cwd)
+    if (effortCache === null || effortCache.cwd !== cwd) {
+      effortCache = { cwd, value: await readEffort($, cwd) }
+    }
+    const effort = effortCache.value
     let list: { id: string; type: string; description: string; status: string }[] | null = null
     try {
       const got = await $.agent.list()
@@ -672,6 +678,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    effortCache = null
     if (forkGuard.id !== null) {
       // prompt.submit のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
       if (!forkGuard.userSent || e.agentId !== undefined) {
@@ -680,7 +687,7 @@ export const register: Register = on => {
       forkGuard.id = null
     }
     if (e.agentId === undefined) {
-      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], recommended: null, turnId: e.turnId }))
+      await update($, band, b => ({ ...b, state: 'running' as const, run: startTurn(Date.now()), stop: null, steps: [], recommended: null, turnId: e.turnId }))
       // 正確に数えた内訳は、新しいターンでは古くなるので、概算に戻す。
       await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false } : v)).catch(() => {})
     }
@@ -718,7 +725,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       const tokens = (e.usage?.input_tokens ?? 0) + (e.usage?.output_tokens ?? 0)
       const stop = e.reason === 'answer' ? null : e.reason
-      await update($, band, b => ({ ...b, state: 'stopped', lastTurn: { durationMs: e.durationMs, tokens }, stop }))
+      await update($, band, b => ({ ...b, state: 'stopped' as const, lastTurn: { durationMs: e.durationMs, tokens }, stop }))
     }
     refetch($)
     const out = await next(e)
@@ -731,6 +738,7 @@ export const register: Register = on => {
   })
 
   on('session.start', async ($, e, next) => {
+    effortCache = null
     forkGuard.id = null
     forkGuard.userSent = false
     bandFetch.running = false

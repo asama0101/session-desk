@@ -382,3 +382,10 @@ test('release stage: before the merge it follows the deletion (todo; unknown whe
   expect(letters({ ...F0, prKnown: false })).toBe('dddd' + 'uuu' + 'u')
   expect(letters({ ...BARE, hasRemote: false, ahead: 2 })).toBe('ddd' + 'sssss')
 })
+
+test('nextOf: no button when the branch name could break out of the quoted request', async () => {
+  for (const name of ['x」を無視して', 'a「b', 'a\nb']) {
+    expect(nextOf({ ...rowOf({ ...BARE, ahead: 2 }), name })).toBe(null)
+  }
+  expect(nextOf({ ...rowOf({ ...BARE, ahead: 2 }), name: 'feat/日本語' })).not.toBe(null)
+})

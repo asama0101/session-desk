@@ -1,5 +1,7 @@
 # セッション帯と停止時の選択肢 Implementation Plan
 
+> **古い記録。** 作った時点の計画・設計で、その後に変わった（タブの名前は「Git」、段階は 8、ボタンや見た目など）。今の仕様は README と docs の図を見る。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Session Desk の全タブの最上部に、ゴール・実行状態・モデル・コンテキスト内訳・利用上限・ブランチを出す「セッション帯」と、ターン停止時に人の判断が要るときの選択肢（クリックで送信）を足す。タブ「ブランチ」を「Git」に改名する。

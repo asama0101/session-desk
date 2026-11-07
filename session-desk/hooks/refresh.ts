@@ -47,12 +47,18 @@ export function createRefresher(deps: {
       const wait = lastStart + MIN_GAP_MS - deps.now()
       if (wait > 0) {
         waiting = withGh
-        void deps.delay(wait).then(() => {
-          const gh = waiting ?? false
-          waiting = null
+        // 待ちが失敗しても、予約を戻して次の要求を受け付ける（失敗したときは、実行せずに捨てる）。
+        void deps.delay(wait).then(
+          () => {
+            const gh = waiting ?? false
+            waiting = null
 
-          return start(gh)
-        })
+            return start(gh)
+          },
+          () => {
+            waiting = null
+          },
+        )
 
         return
       }

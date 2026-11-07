@@ -1008,3 +1008,25 @@ test('broken JSON or a non-string effortLevel leaves effort out', async ($, on) 
   expect(t).toContain('claude-test-model')
   expect(t).not.toContain('/')
 })
+
+test('effort is read once per session and turn, not on every band refresh', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  let reads = 0
+  on('config.list', () => {
+    reads++
+
+    return { value: [{ key: 'effortLevel', label: 'Effort level', value: 'high' }] }
+  })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  await $.turn.complete(done())
+  await settle()
+  await $.turn.complete(done())
+  await settle()
+  expect(await draw(ui)).toContain('high')
+  expect(reads).toBe(1)
+  await ui.unmount()
+})
