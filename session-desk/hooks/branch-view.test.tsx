@@ -281,3 +281,12 @@ test('a row shows the difference from origin as ↑ahead ↓behind, only when th
   expect(await jsonOf(ui, 'branch-docs/b')).toContain('"label":"　docs docs/b  次: ブランチを削除"')
   await ui.unmount()
 })
+
+test('the default branch row shows its difference from origin too', async ($, on) => {
+  const refs = REFS.replace('refs/remotes/origin/main\tM1', 'refs/remotes/origin/main\tM0')
+  const e = engine(on, { refs, diff: '2\t0\n' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await jsonOf(ui, 'branch-main')).toContain('"label":"　既定 main  ↓2  既定"')
+  await ui.unmount()
+})

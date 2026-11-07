@@ -206,7 +206,7 @@ test('warnings: detached HEAD, uncommitted changes on the default branch, unpush
   const dirtyMain = await collect(fake({ 'symbolic-ref -q HEAD': ok('refs/heads/main\n'), status: ok('?? x\0') }).run, null, OPTS)
   expect(dirtyMain.warnings).toContain('既定ブランチ上に未 commit の変更があります')
 
-  const unpushed = await collect(fake({ 'rev-list --count refs/remotes/origin/main..refs/heads/main': ok('2\n') }).run, null, OPTS)
+  const unpushed = await collect(fake({ 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('0\t2\n') }).run, null, OPTS)
   expect(unpushed.warnings).toContain('既定ブランチに未 push の commit があります')
 })
 
@@ -355,4 +355,15 @@ test('the difference from origin: ahead and behind come from one left-right coun
 test('without origin for the branch there is no difference to show', async () => {
   const snap = await collect(fake().run, null, OPTS)
   expect(row(snap, 'feat/a')?.facts.originDiff).toBe(null)
+})
+
+test('the default branch row also shows how far it is from origin, and the unpushed warning uses the same count', async () => {
+  const refs = REFS.replace('refs/remotes/origin/main\tM1', 'refs/remotes/origin/main\tM0')
+  const behind = await collect(fake({ refs, 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('3\t0\n') }).run, null, OPTS)
+  expect(row(behind, 'main')?.facts.originDiff).toEqual({ ahead: 0, behind: 3 })
+  expect(behind.warnings).not.toContain('既定ブランチに未 push の commit があります')
+
+  const ahead = await collect(fake({ refs, 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('0\t2\n') }).run, null, OPTS)
+  expect(row(ahead, 'main')?.facts.originDiff).toEqual({ ahead: 2, behind: 0 })
+  expect(ahead.warnings).toContain('既定ブランチに未 push の commit があります')
 })

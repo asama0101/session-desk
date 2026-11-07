@@ -271,7 +271,7 @@ export type Remote = { name: string; url: string }
 export function tidyUrl(url: string): string {
   let rest = url.trim()
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rest)) {
-    rest = rest.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^/@]*@/, '')
+    rest = rest.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^/]*@/, '')
   } else {
     const scp = /^[^/@:]+@([^/:]+):(.+)$/.exec(rest)
     if (scp !== null) {
@@ -279,14 +279,14 @@ export function tidyUrl(url: string): string {
     }
   }
 
-  return rest.replace(/\/+$/, '').replace(/\.git$/, '')
+  return rest.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\.git$/, '')
 }
 
 // `git remote -v` の出力から、fetch 側の名前と URL を、現れた順に取る。
 export function parseRemotes(stdout: string): Remote[] {
   const found: Remote[] = []
   for (const line of linesOf(stdout)) {
-    const match = /^(\S+)	(.+) \(fetch\)$/.exec(line.trim())
+    const match = /^(\S+)\t(.+) \(fetch\)$/.exec(line.trim())
     if (match !== null && !found.some(r => r.name === match[1])) {
       found.push({ name: match[1] as string, url: tidyUrl(match[2] as string) })
     }

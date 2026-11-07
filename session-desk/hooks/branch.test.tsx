@@ -280,3 +280,10 @@ test('parseRemotes reads fetch lines of git remote -v, keeps order, tolerates CR
   expect(JSON.stringify(parseRemotes(out))).not.toContain('SECRET')
   expect(parseRemotes('')).toEqual([])
 })
+
+test('tidyUrl removes credentials up to the last @ before the path, and drops a query or fragment', async () => {
+  expect(tidyUrl('https://user:p@ss@host/x.git')).toBe('host/x')
+  expect(tidyUrl('https://host/a@b/c')).toBe('host/a@b/c')
+  expect(tidyUrl('https://host/x.git?token=abc')).toBe('host/x')
+  expect(tidyUrl('https://host/x#frag')).toBe('host/x')
+})

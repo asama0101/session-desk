@@ -164,11 +164,13 @@ export async function collect(
   if (defaultName !== null && currentName === defaultName && dirty === true) {
     warnings.push('既定ブランチ上に未 commit の変更があります')
   }
-  if (defaultName !== null && origin.has(defaultName) && oidOf.has(defaultName)) {
-    const unpushed = await countOf(run, `${ORIGIN}${defaultName}..${HEADS}${defaultName}`)
-    if (unpushed !== null && unpushed >= 1) {
+  let defaultDiff: Facts['originDiff'] = null
+  if (hasRemote && defaultName !== null && origin.has(defaultName) && oidOf.has(defaultName)) {
+    const d = await diffOf(run, `${ORIGIN}${defaultName}`, `${HEADS}${defaultName}`)
+    if (d !== null && d.ahead >= 1) {
       warnings.push('既定ブランチに未 push の commit があります')
     }
+    defaultDiff = d !== null && (d.ahead > 0 || d.behind > 0) ? d : null
   }
 
   // PR（gh）
@@ -252,7 +254,7 @@ export async function collect(
     built.set(name, buildRow(stripControl(name), kindOf(name, defaultName), name === currentName, facts))
   }
   if (defaultName !== null && oidOf.has(defaultName)) {
-    const facts: Facts = { dirty: false, ahead: 0, pushed: origin.get(defaultName) === oidOf.get(defaultName)?.oid, createdAt: null, firstCommitAt: null, lastCommitAt: oidOf.get(defaultName)?.date ?? null, pushedAt: null, pr: null, prKnown: true, hasRemote, originDiff: null }
+    const facts: Facts = { dirty: false, ahead: 0, pushed: origin.get(defaultName) === oidOf.get(defaultName)?.oid, createdAt: null, firstCommitAt: null, lastCommitAt: oidOf.get(defaultName)?.date ?? null, pushedAt: null, pr: null, prKnown: true, hasRemote, originDiff: defaultDiff }
     built.set(defaultName, buildRow(stripControl(defaultName), 'default', defaultName === currentName, facts))
   }
   const branches = heads.map(n => built.get(n)).filter((b): b is BranchRow => b !== undefined)
