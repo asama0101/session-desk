@@ -1,15 +1,19 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  buildRow,
+  computeStages,
   defaultBranchOf,
   isDirty,
   kindOf,
   lastLineOf,
+  nowOf,
   parseAhead,
   parseCreatedAt,
   parseNewestReflogDate,
   parseRefs,
 } from './branch'
+import type { Facts, Pr } from './branch'
 
 test('kindOf maps the branch-name prefix to a kind; the default branch wins; everything else is other', async () => {
   expect(kindOf('feat/x', 'main')).toBe('feat')
@@ -66,4 +70,129 @@ test('parseNewestReflogDate reads the date inside @{...}; lastLineOf returns the
   expect(parseNewestReflogDate('')).toBe(null)
   expect(lastLineOf('a\nb\r\n\n')).toBe('b')
   expect(lastLineOf('')).toBe(null)
+})
+
+// 段階の判定。素: 切ったばかり。F0: ahead 2 で push 済み、PR なし。
+const BARE: Facts = {
+  dirty: false,
+  ahead: 0,
+  pushed: false,
+  createdAt: null,
+  firstCommitAt: null,
+  lastCommitAt: null,
+  pushedAt: null,
+  pr: null,
+  prKnown: true,
+}
+const F0: Facts = { ...BARE, ahead: 2, pushed: true }
+const pr = (over: Partial<Pr>): Pr => ({
+  number: 1,
+  state: 'OPEN',
+  isDraft: false,
+  reviewDecision: '',
+  createdAt: '2026-11-05T12:00:00+09:00',
+  mergedAt: null,
+  headRefName: 'feat/x',
+  headRefOid: 'abc',
+  isCrossRepository: false,
+  latestReviews: [],
+  ...over,
+})
+// d: done, t: todo, u: unknown, s: skipped
+const LETTER = { done: 'd', todo: 't', unknown: 'u', skipped: 's' } as const
+const letters = (f: Facts) => computeStages(f).map(s => LETTER[s.status]).join('')
+
+const CASES: readonly (readonly [string, Facts, string, number | null, string])[] = [
+  ['1 fresh branch', BARE, 'dttttttt', 2, '次: 編集'],
+  ['2 uncommitted changes', { ...BARE, dirty: true }, 'ddtttttt', 3, '編集中'],
+  ['3 committed, not pushed', { ...BARE, ahead: 2 }, 'dddttttt', 4, '次: push'],
+  ['4 pushed, no PR', F0, 'ddddtttt', 5, '次: PR を作る'],
+  ['5 open PR, no review setting', { ...F0, pr: pr({}) }, 'dddddstt', 7, 'マージ待ち'],
+  ['6 open PR, approved', { ...F0, pr: pr({ reviewDecision: 'APPROVED' }) }, 'ddddddtt', 7, 'マージ待ち'],
+  ['7 open PR, review required', { ...F0, pr: pr({ reviewDecision: 'REVIEW_REQUIRED' }) }, 'dddddttt', 6, '次: レビューを待つ'],
+  ['8 open PR, changes requested', { ...F0, pr: pr({ reviewDecision: 'CHANGES_REQUESTED' }) }, 'dddddttt', 6, '次: 指摘を直す'],
+  ['9 draft PR', { ...F0, pr: pr({ isDraft: true }) }, 'dddddttt', 6, '次: 草稿を解除する'],
+  ['10 merged PR', { ...F0, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
+  ['11 merged PR with uncommitted changes', { ...F0, dirty: true, pr: pr({ state: 'MERGED' }) }, 'ddtddddt', 3, '編集中'],
+  ['12 closed PR', { ...F0, pr: pr({ state: 'CLOSED' }) }, 'ddddtttt', 5, '次: PR を作り直す'],
+  ['13 pushed, edited again, open PR', { ...F0, dirty: true, pr: pr({}) }, 'ddtddstt', 3, '編集中'],
+  ['14 gh unavailable', { ...F0, prKnown: false }, 'dddduuuu', null, '今: PR 以降は不明'],
+  ['15 base unknown', { ...F0, ahead: null }, 'duuutttt', null, '今: 判定できない'],
+  ['16 push unknown', { ...F0, pushed: null }, 'dddutttt', 5, '次: PR を作る'],
+  ['17 merged, base unknown', { ...F0, ahead: null, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
+  ['18 status failed', { ...F0, dirty: null }, 'duudtttt', null, '今: 判定できない'],
+  ['19 base unknown and gh unavailable', { ...F0, ahead: null, prKnown: false }, 'duuuuuuu', null, '今: 判定できない'],
+  ['20 merged, push unknown', { ...F0, ahead: 0, pushed: null, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
+]
+
+for (const [name, facts, expected, nowId, nowText] of CASES) {
+  test(`stages case ${name}`, async () => {
+    const stages = computeStages(facts)
+    expect(stages.length).toBe(8)
+    expect(stages.map(s => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(letters(facts)).toBe(expected)
+    expect(nowOf(stages, facts)).toEqual({ id: nowId, text: nowText })
+  })
+}
+
+test('stage labels follow git-flow', async () => {
+  expect(computeStages(BARE).map(s => s.label)).toEqual([
+    'ブランチを切る',
+    '編集',
+    'commit',
+    'push',
+    'PR',
+    'レビュー',
+    'マージ',
+    '削除',
+  ])
+})
+
+test('dates come from the facts and the PR; only done stages carry one; a missing push date stays null', async () => {
+  const facts: Facts = {
+    ...F0,
+    createdAt: '2026-11-05T09:00:00+09:00',
+    firstCommitAt: '2026-11-05T10:00:00+09:00',
+    lastCommitAt: '2026-11-05T11:00:00+09:00',
+    pushedAt: null,
+    pr: pr({
+      state: 'MERGED',
+      createdAt: '2026-11-05T12:00:00+09:00',
+      mergedAt: '2026-11-05T14:00:00+09:00',
+      latestReviews: [
+        { submittedAt: '2026-11-05T12:30:00+09:00' },
+        { submittedAt: '2026-11-05T13:30:00+09:00' },
+        { submittedAt: '2026-11-05T13:00:00+09:00' },
+      ],
+    }),
+  }
+  expect(computeStages(facts).map(s => s.at)).toEqual([
+    '2026-11-05T09:00:00+09:00',
+    '2026-11-05T10:00:00+09:00',
+    '2026-11-05T11:00:00+09:00',
+    null,
+    '2026-11-05T12:00:00+09:00',
+    '2026-11-05T13:30:00+09:00',
+    '2026-11-05T14:00:00+09:00',
+    null,
+  ])
+  const open = computeStages({ ...F0, lastCommitAt: 'x', pr: pr({}) })
+  expect(open[6]?.at).toBe(null)
+})
+
+test('the commit stage notes the commit count only when done and ahead is 1 or more', async () => {
+  expect(computeStages({ ...BARE, ahead: 2 })[2]?.note).toBe('2 件')
+  expect(computeStages({ ...F0, ahead: 0, pr: pr({ state: 'MERGED' }) })[2]?.note).toBe(null)
+  expect(computeStages(BARE)[2]?.note).toBe(null)
+})
+
+test('buildRow builds stages and now; a default branch has no stages and reads 既定', async () => {
+  const row = buildRow('feat/x', 'feat', true, F0)
+  expect(row.name).toBe('feat/x')
+  expect(row.isCurrent).toBe(true)
+  expect(row.stages.length).toBe(8)
+  expect(row.now).toEqual({ id: 5, text: '次: PR を作る' })
+  const main = buildRow('main', 'default', false, F0)
+  expect(main.stages).toEqual([])
+  expect(main.now).toEqual({ id: null, text: '既定' })
 })

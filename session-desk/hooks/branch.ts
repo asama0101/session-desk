@@ -118,3 +118,111 @@ export function lastLineOf(stdout: string): string | null {
 
   return last === undefined ? null : last.trim()
 }
+
+export type BranchRow = {
+  name: string
+  kind: Kind
+  isCurrent: boolean
+  facts: Facts
+  stages: Stage[]
+  now: Now
+}
+
+const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', '削除'] as const
+
+function statusesOf(f: Facts): Status[] {
+  const pr = f.pr
+  const merged = pr?.state === 'MERGED'
+  const yes = (cond: boolean): Status => (cond ? 'done' : 'todo')
+
+  const s1: Status = 'done'
+  let s2: Status
+  let s3: Status
+  let s4: Status
+  if (merged) {
+    s2 = 'done'
+    s3 = f.dirty === true ? 'todo' : 'done'
+    s4 = 'done'
+  } else {
+    const noBase = f.ahead === null || f.dirty === null
+    s2 = noBase ? 'unknown' : yes((f.ahead ?? 0) > 0 || f.dirty === true)
+    s3 = noBase ? 'unknown' : yes((f.ahead ?? 0) > 0 && f.dirty === false)
+    s4 = f.ahead === null || f.pushed === null ? 'unknown' : yes(f.pushed)
+  }
+
+  let s5: Status
+  let s6: Status
+  let s7: Status
+  if (merged) {
+    s5 = s6 = s7 = 'done'
+  } else if (!f.prKnown) {
+    s5 = s6 = s7 = 'unknown'
+  } else {
+    s5 = yes(pr !== null && pr.state !== 'CLOSED')
+    s7 = 'todo'
+    if (pr === null || pr.state !== 'OPEN' || pr.isDraft) {
+      s6 = 'todo'
+    } else if (pr.reviewDecision === 'APPROVED') {
+      s6 = 'done'
+    } else {
+      s6 = pr.reviewDecision === '' ? 'skipped' : 'todo'
+    }
+  }
+  const s8: Status = !merged && (s5 === 'unknown' || s6 === 'unknown' || s7 === 'unknown') ? 'unknown' : 'todo'
+
+  return [s1, s2, s3, s4, s5, s6, s7, s8]
+}
+
+export function computeStages(f: Facts): Stage[] {
+  const pr = f.pr
+  const reviewedAt = (pr?.latestReviews ?? []).map(r => r.submittedAt).sort().pop() ?? null
+  const dates: (string | null)[] = [
+    f.createdAt,
+    f.firstCommitAt,
+    f.lastCommitAt,
+    f.pushedAt,
+    pr?.createdAt ?? null,
+    reviewedAt,
+    pr?.mergedAt ?? null,
+    null,
+  ]
+
+  return statusesOf(f).map((status, i) => ({
+    id: i + 1,
+    label: LABELS[i] as string,
+    status,
+    at: status === 'done' ? (dates[i] ?? null) : null,
+    note: i === 2 && status === 'done' && (f.ahead ?? 0) >= 1 ? `${f.ahead} 件` : null,
+  }))
+}
+
+export function nowOf(stages: readonly Stage[], f: Facts): Now {
+  if (f.pr?.state !== 'MERGED' && (f.ahead === null || f.dirty === null)) {
+    return { id: null, text: '今: 判定できない' }
+  }
+  const stage = stages.find(s => s.status === 'todo')
+  if (stage === undefined) {
+    return { id: null, text: '今: PR 以降は不明' }
+  }
+  const pr = f.pr
+  const texts: Record<number, string> = {
+    2: '次: 編集',
+    3: '編集中',
+    4: '次: push',
+    5: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
+    6: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
+    7: 'マージ待ち',
+    8: '次: ブランチを削除',
+  }
+
+  return { id: stage.id, text: texts[stage.id] ?? '' }
+}
+
+export function buildRow(name: string, kind: Kind, isCurrent: boolean, facts: Facts): BranchRow {
+  if (kind === 'default') {
+    return { name, kind, isCurrent, facts, stages: [], now: { id: null, text: '既定' } }
+  }
+  const stages = computeStages(facts)
+
+  return { name, kind, isCurrent, facts, stages, now: nowOf(stages, facts) }
+}
