@@ -294,3 +294,39 @@ export function parseRemotes(stdout: string): Remote[] {
 
   return found
 }
+
+export type Action = {
+  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。「いいえ」を覚えておく目印。
+  key: string
+  kind: 'commit' | 'push' | 'pr' | 'delete'
+  question: string
+  // 「はい」を押したとき、Claude に送る依頼。
+  prompt: string
+}
+
+// いまチェックアウトしているブランチの「今」が、commit・push・PR・削除のどれかなら、yes/no で聞く内容を返す。
+export function actionOf(row: BranchRow): Action | null {
+  if (!row.isCurrent || row.kind === 'default') {
+    return null
+  }
+  const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
+  switch (row.now.id) {
+    case 3:
+      return row.facts.dirty === true
+        ? { key, kind: 'commit', question: 'commit しますか？', prompt: 'はい。未コミットの変更を commit してください' }
+        : null
+    case 4:
+      return { key, kind: 'push', question: 'push しますか？', prompt: 'はい。現在のブランチを push してください' }
+    case 5:
+      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: 'はい。現在のブランチの PR を main 向けに作ってください' }
+    case 8:
+      return {
+        key,
+        kind: 'delete',
+        question: '削除しますか？',
+        prompt: `はい。マージ済みの作業ブランチ ${row.name} を削除してください`,
+      }
+    default:
+      return null
+  }
+}

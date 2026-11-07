@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  actionOf,
   adoptPr,
   buildRow,
   parseRemotes,
@@ -286,4 +287,55 @@ test('tidyUrl removes credentials up to the last @ before the path, and drops a 
   expect(tidyUrl('https://host/a@b/c')).toBe('host/a@b/c')
   expect(tidyUrl('https://host/x.git?token=abc')).toBe('host/x')
   expect(tidyUrl('https://host/x#frag')).toBe('host/x')
+})
+
+// yes/no で Claude に依頼できる操作。いまチェックアウトしているブランチの「今」だけが対象。
+const rowOf = (facts: Facts, isCurrent = true, kind: 'feat' | 'default' = 'feat') => buildRow('feat/x', kind, isCurrent, facts)
+
+test('actionOf: uncommitted changes ask whether to commit', async () => {
+  const action = actionOf(rowOf({ ...BARE, ahead: 2, dirty: true }))
+  expect(action?.kind).toBe('commit')
+  expect(action?.question).toBe('commit しますか？')
+  expect(action?.prompt).toBe('はい。未コミットの変更を commit してください')
+})
+
+test('actionOf: committed but not pushed asks whether to push', async () => {
+  const action = actionOf(rowOf({ ...BARE, ahead: 2 }))
+  expect(action?.kind).toBe('push')
+  expect(action?.question).toBe('push しますか？')
+  expect(action?.prompt).toBe('はい。現在のブランチを push してください')
+})
+
+test('actionOf: pushed without a PR, and a closed PR, ask whether to create a PR', async () => {
+  for (const facts of [F0, { ...F0, pr: pr({ state: 'CLOSED' }) }]) {
+    const action = actionOf(rowOf(facts))
+    expect(action?.kind).toBe('pr')
+    expect(action?.question).toBe('PR を作りますか？')
+    expect(action?.prompt).toBe('はい。現在のブランチの PR を main 向けに作ってください')
+  }
+})
+
+test('actionOf: a merged branch asks whether to delete it, naming the branch', async () => {
+  const action = actionOf(rowOf({ ...F0, pr: pr({ state: 'MERGED' }) }))
+  expect(action?.kind).toBe('delete')
+  expect(action?.question).toBe('削除しますか？')
+  expect(action?.prompt).toBe('はい。マージ済みの作業ブランチ feat/x を削除してください')
+})
+
+test('actionOf: nothing is asked for other branches, the default branch, or steps that are not actions', async () => {
+  expect(actionOf(rowOf({ ...BARE, ahead: 2 }, false))).toBe(null)
+  expect(actionOf(rowOf({ ...BARE, ahead: 2 }, true, 'default'))).toBe(null)
+  expect(actionOf(rowOf(BARE))).toBe(null)
+  expect(actionOf(rowOf({ ...F0, pr: pr({}) }))).toBe(null)
+  expect(actionOf(rowOf({ ...F0, pr: pr({ reviewDecision: 'REVIEW_REQUIRED' }) }))).toBe(null)
+  expect(actionOf(rowOf({ ...F0, ahead: null }))).toBe(null)
+  expect(actionOf(rowOf({ ...F0, dirty: null }))).toBe(null)
+})
+
+test('actionOf: the key changes when the state moves on, so a dismissed question comes back', async () => {
+  const a = actionOf(rowOf({ ...BARE, ahead: 2, dirty: true }))
+  const b = actionOf(rowOf({ ...BARE, ahead: 3, dirty: true }))
+  const c = actionOf(rowOf({ ...BARE, ahead: 2 }))
+  expect(a?.key).not.toBe(b?.key)
+  expect(a?.key).not.toBe(c?.key)
 })

@@ -61,10 +61,17 @@ type Over = {
   hang?: boolean
   remote?: object
   diff?: string
+  status?: string
 }
 
 function engine(on: any, over: Over = {}) {
   const calls: string[] = []
+  const submitted: string[] = []
+  on('prompt.submit', (_: any, e: any) => {
+    submitted.push(e.text)
+
+    return { text: e.text }
+  })
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
@@ -84,6 +91,7 @@ function engine(on: any, over: Over = {}) {
     else if (key === 'symbolic-ref -q HEAD') result = { exitCode: 0, stdout: 'refs/heads/feat/a\n', ...over.head }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) result = { exitCode: 0, stdout: over.refs ?? REFS }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) result = { exitCode: 0, stdout: AHEAD }
+    else if (key === 'status --porcelain=v1 -z') result = { exitCode: 0, stdout: over.status ?? '' }
     else if (key === 'remote -v') result = { exitCode: 0, stdout: REMOTE_V, ...over.remote }
     else if (key.startsWith('rev-list --left-right --count')) result = { exitCode: 0, stdout: over.diff ?? '0\t0\n' }
     else if (key.startsWith('rev-list --count')) result = { exitCode: 0, stdout: '0\n' }
@@ -94,7 +102,7 @@ function engine(on: any, over: Over = {}) {
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls }
+  return { calls, submitted }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -288,5 +296,128 @@ test('the default branch row shows its difference from origin too', async ($, on
   await start($)
   const ui = await open($, e.calls)
   expect(await jsonOf(ui, 'branch-main')).toContain('"label":"　既定 main  ↓2  既定"')
+  await ui.unmount()
+})
+
+const textJson = async (ui: any, text: string) => JSON.stringify(await ui.find({ type: 'Text', text }))
+
+test('colors: done is green, now is yellow and bold, todo is grey', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await textJson(ui, '✓ ブランチを切る  —')).toContain('"color":"success"')
+  const now = await textJson(ui, '● push  次: push')
+  expect(now).toContain('"color":"warning"')
+  expect(now).toContain('"bold":true')
+  expect(await textJson(ui, '○ PR')).toContain('"color":"inactive"')
+  await ui.unmount()
+})
+
+test('colors: unknown is red', async ($, on) => {
+  const e = engine(on, { gh: { exitCode: 1 } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await textJson(ui, '? PR')).toContain('"color":"error"')
+  await ui.unmount()
+})
+
+test('colors: a skipped stage (no remote) is grey', async ($, on) => {
+  const e = engine(on, { remote: { stdout: '' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await textJson(ui, '－ push')).toContain('"color":"inactive"')
+  await ui.unmount()
+})
+
+test('colors: each list row is colored by its next step', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"color":"suggestion"')
+  expect(await jsonOf(ui, 'branch-docs/b')).toContain('"color":"merged"')
+  expect(await jsonOf(ui, 'branch-main')).toContain('"color":"inactive"')
+  await ui.unmount()
+})
+
+test('colors: editing is yellow in the list', async ($, on) => {
+  const e = engine(on, { status: ' M x\0' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"color":"warning"')
+  await ui.unmount()
+})
+
+test('yes/no: the next step on the current branch is asked, and yes sends the request to Claude once', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('push しますか？')
+  expect(await ui.find({ key: 'act-yes' })).toBeDefined()
+  expect(await ui.find({ key: 'act-no' })).toBeDefined()
+  await ui.press({ key: 'act-yes' })
+  await flush()
+  expect(e.submitted).toEqual(['はい。現在のブランチを push してください'])
+  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  expect(await texts(ui)).not.toContain('push しますか？')
+  await ui.unmount()
+})
+
+test('yes/no: no sends nothing and hides the question', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'act-no' })
+  await flush()
+  expect(e.submitted).toEqual([])
+  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('yes/no: editing asks whether to commit', async ($, on) => {
+  const e = engine(on, { status: ' M x\0' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('commit しますか？')
+  await ui.press({ key: 'act-yes' })
+  await flush()
+  expect(e.submitted).toEqual(['はい。未コミットの変更を commit してください'])
+  await ui.unmount()
+})
+
+test('yes/no: nothing is asked for a branch that is not the current one', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'branch-docs/b' })
+  await flush()
+  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('yes/no: deleting needs a second confirmation before anything is sent', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('削除しますか？')
+  await ui.press({ key: 'act-yes' })
+  await flush()
+  expect(e.submitted).toEqual([])
+  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
+  await ui.press({ key: 'act-confirm' })
+  await flush()
+  expect(e.submitted).toEqual(['はい。マージ済みの作業ブランチ docs/b を削除してください'])
+  await ui.unmount()
+})
+
+test('yes/no: backing out of the second confirmation sends nothing', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'act-yes' })
+  await flush()
+  await ui.press({ key: 'act-cancel' })
+  await flush()
+  expect(e.submitted).toEqual([])
+  expect(await ui.find({ key: 'act-confirm' })).toBeUndefined()
   await ui.unmount()
 })

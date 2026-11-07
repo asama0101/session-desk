@@ -1,5 +1,6 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
-import type { BranchRow, Kind, Stage } from './branch'
+import { actionOf } from './branch'
+import type { Action, BranchRow, Kind, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
 
@@ -58,8 +59,31 @@ function remoteLines(remotes: Snapshot['remotes']): string[] {
   return remotes.some(r => r.name === 'origin') ? lines : [...lines, 'origin なし']
 }
 
+// テーマの色名。明るい端末でも暗い端末でも読める。
+const STATUS_COLOR = { done: 'success', todo: 'inactive', unknown: 'error', skipped: 'inactive' } as const
+
+// 一覧の行の色。右端の「今」で決める。
+function rowColor(row: BranchRow): string {
+  if (row.kind === 'default') {
+    return 'inactive'
+  }
+  if (row.now.text.startsWith('今:')) {
+    return 'error'
+  }
+  if (row.now.text.startsWith('commit 済み')) {
+    return 'success'
+  }
+  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'merged' }
+
+  return byStage[row.now.id ?? 0] ?? 'inactive'
+}
+
+function isNowStage(stage: Stage, row: BranchRow): boolean {
+  return stage.id === row.now.id && stage.status === 'todo'
+}
+
 function stageLine(stage: Stage, row: BranchRow, offsetMin: number): string {
-  const isNow = stage.id === row.now.id && stage.status === 'todo'
+  const isNow = isNowStage(stage, row)
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
   const date = stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
   const parts = [`${symbol} ${stage.label}`, date, stage.note ?? '', isNow ? row.now.text : '']
@@ -74,6 +98,8 @@ type Args = {
   columns: number
   offsetMin: number
   onSelect(name: string): void
+  // yes/no。dismissed は「いいえ」や「はい」を押した質問の key、confirm は 2 段目の確認中の key。
+  act: { dismissed: readonly string[]; confirm: string | null; onYes(action: Action): void; onNo(action: Action): void }
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -87,7 +113,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
   if (snap.problem !== null) {
     return (
       <Box flexDirection="column" gap={1}>
-        <Text>{PROBLEM_TEXT[snap.problem]}</Text>
+        <Text color="error">{PROBLEM_TEXT[snap.problem]}</Text>
         <Text dimColor>{footer}</Text>
       </Box>
     )
@@ -104,23 +130,56 @@ export function renderBranchTab(ui: Ui, a: Args) {
         const label = stripControl(`${row.isCurrent ? '＊' : '　'}${KIND_LABEL[row.kind]} ${row.name}  ${diff}${row.now.text}`)
         const key = `branch-${row.name}`
 
-        return row === chosen ? (
+        return (
           <Button key={key} plain label={label} onPress={() => a.onSelect(row.name)}>
-            <Text bold>{label}</Text>
+            <Text color={rowColor(row)} bold={row === chosen}>
+              {label}
+            </Text>
           </Button>
-        ) : (
-          <Button key={key} plain dimColor label={label} onPress={() => a.onSelect(row.name)} />
         )
       })}
     </Box>
   )
+
+  const action = chosen === undefined ? null : actionOf(chosen)
+  const asking = action !== null && chosen !== undefined && !a.act.dismissed.includes(action.key)
 
   const detail = (
     <Box flexDirection="column">
       {chosen === undefined || chosen.kind === 'default' ? (
         <Text dimColor>経過はありません（既定ブランチ）</Text>
       ) : (
-        chosen.stages.map(stage => <Text>{stripControl(stageLine(stage, chosen, a.offsetMin))}</Text>)
+        chosen.stages.map(stage => {
+          const isNow = isNowStage(stage, chosen)
+
+          return (
+            <Text color={isNow ? 'warning' : STATUS_COLOR[stage.status]} bold={isNow}>
+              {stripControl(stageLine(stage, chosen, a.offsetMin))}
+            </Text>
+          )
+        })
+      )}
+      {asking && chosen !== undefined && action !== null && a.act.confirm === action.key && (
+        <Box gap={2}>
+          <Text color="error">{stripControl(`本当に ${chosen.name} を削除しますか？`)}</Text>
+          <Button key="act-confirm" plain label="削除する" onPress={() => a.act.onYes(action)}>
+            <Text color="error">削除する</Text>
+          </Button>
+          <Button key="act-cancel" plain label="やめる" onPress={() => a.act.onNo(action)}>
+            <Text>やめる</Text>
+          </Button>
+        </Box>
+      )}
+      {asking && action !== null && a.act.confirm !== action.key && (
+        <Box gap={2}>
+          <Text color="warning">{action.question}</Text>
+          <Button key="act-yes" plain label="はい" onPress={() => a.act.onYes(action)}>
+            <Text color="success">はい</Text>
+          </Button>
+          <Button key="act-no" plain label="いいえ" onPress={() => a.act.onNo(action)}>
+            <Text color="error">いいえ</Text>
+          </Button>
+        </Box>
       )}
     </Box>
   )
@@ -138,7 +197,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
         {detail}
       </Box>
       {snap.warnings.map(warning => (
-        <Text>{stripControl(warning)}</Text>
+        <Text color="warning">{stripControl(warning)}</Text>
       ))}
       <Text dimColor>{footer}</Text>
     </Box>
