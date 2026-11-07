@@ -51,7 +51,17 @@ const PRS = JSON.stringify([
   },
 ])
 
-type Over = { refs?: string; head?: object; repo?: object; gh?: object; hang?: boolean }
+const REMOTE_V = 'origin\thttps://github.com/a/b.git (fetch)\norigin\thttps://github.com/a/b.git (push)\n'
+
+type Over = {
+  refs?: string
+  head?: object
+  repo?: object
+  gh?: object
+  hang?: boolean
+  remote?: object
+  diff?: string
+}
 
 function engine(on: any, over: Over = {}) {
   const calls: string[] = []
@@ -74,6 +84,8 @@ function engine(on: any, over: Over = {}) {
     else if (key === 'symbolic-ref -q HEAD') result = { exitCode: 0, stdout: 'refs/heads/feat/a\n', ...over.head }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) result = { exitCode: 0, stdout: over.refs ?? REFS }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) result = { exitCode: 0, stdout: AHEAD }
+    else if (key === 'remote -v') result = { exitCode: 0, stdout: REMOTE_V, ...over.remote }
+    else if (key.startsWith('rev-list --left-right --count')) result = { exitCode: 0, stdout: over.diff ?? '0\t0\n' }
     else if (key.startsWith('rev-list --count')) result = { exitCode: 0, stdout: '0\n' }
     else if (key.startsWith('gh pr list')) result = { exitCode: 0, stdout: PRS, ...over.gh }
     else if (key !== 'status --porcelain=v1 -z') result = { exitCode: 1, stdout: '' }
@@ -203,5 +215,69 @@ test('control characters in a branch name never reach the screen', async ($, on)
   const ui = await open($, e.calls)
   expect(JSON.stringify(await ui.drawn())).not.toContain('\u001b')
   expect(await jsonOf(ui, 'branch-feat/x')).toContain('feat feat/x')
+  await ui.unmount()
+})
+
+test('the remotes are listed under the heading with tidy URLs', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('origin  github.com/a/b')
+  await ui.unmount()
+})
+
+test('several remotes are all listed, and credentials in a URL never reach the screen', async ($, on) => {
+  const remote = {
+    stdout:
+      'origin\thttps://user:ghp_SECRET@github.com/a/b.git (fetch)\norigin\thttps://user:ghp_SECRET@github.com/a/b.git (push)\n' +
+      'upstream\tgit@github.com:c/d.git (fetch)\nupstream\tgit@github.com:c/d.git (push)\n',
+  }
+  const e = engine(on, { remote })
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('origin  github.com/a/b')
+  expect(lines).toContain('upstream  github.com/c/d')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('SECRET')
+  await ui.unmount()
+})
+
+test('with no remote the screen says リモートなし, push onwards is 対象外 and gh is not applicable', async ($, on) => {
+  const e = engine(on, { remote: { stdout: '' } })
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('リモートなし')
+  expect(lines).toContain('－ push')
+  expect(lines.some(l => /^git \d\d:\d\d:\d\d \/ gh 対象外$/.test(l))).toBe(true)
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('commit 済み（リモートなし）')
+  await ui.unmount()
+})
+
+test('with only a remote other than origin the screen lists it and adds an origin なし line', async ($, on) => {
+  const e = engine(on, { remote: { stdout: 'upstream\tgit@github.com:c/d.git (fetch)\nupstream\tgit@github.com:c/d.git (push)\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('upstream  github.com/c/d')
+  expect(lines).toContain('origin なし')
+  await ui.unmount()
+})
+
+test('when the remotes cannot be read the screen says リモート: 不明', async ($, on) => {
+  const e = engine(on, { remote: { exitCode: 128, stdout: '' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('リモート: 不明')
+  await ui.unmount()
+})
+
+test('a row shows the difference from origin as ↑ahead ↓behind, only when there is one', async ($, on) => {
+  const refs = REFS + 'refs/remotes/origin/feat/a\tA0\t2026-11-05T10:00:00+09:00\n'
+  const e = engine(on, { refs, diff: '1\t2\n' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await jsonOf(ui, 'branch-feat/a')).toContain('"label":"＊feat feat/a  ↑2 ↓1  次: push"')
+  expect(await jsonOf(ui, 'branch-docs/b')).toContain('"label":"　docs docs/b  次: ブランチを削除"')
   await ui.unmount()
 })

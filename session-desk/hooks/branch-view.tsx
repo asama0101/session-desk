@@ -35,6 +35,29 @@ export function formatAt(iso: string, offsetMin: number): string {
   return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
 }
 
+// origin の同名ブランチとの差。差があるときだけ、`↑2 ↓1  ` の形（末尾に空白 2 つ）で返す。
+function diffText(diff: BranchRow['facts']['originDiff']): string {
+  if (diff === null || diff === undefined) {
+    return ''
+  }
+  const parts = [diff.ahead > 0 ? `↑${diff.ahead}` : '', diff.behind > 0 ? `↓${diff.behind}` : ''].filter(part => part !== '')
+
+  return parts.length === 0 ? '' : `${parts.join(' ')}  `
+}
+
+// 見出しの下に出すリモートの行。取れなかったとき・ないとき・origin だけがないときも、言葉にする。
+function remoteLines(remotes: Snapshot['remotes']): string[] {
+  if (remotes === null) {
+    return ['リモート: 不明']
+  }
+  if (remotes.length === 0) {
+    return ['リモートなし']
+  }
+  const lines = remotes.map(r => `${r.name}  ${r.url}`)
+
+  return remotes.some(r => r.name === 'origin') ? lines : [...lines, 'origin なし']
+}
+
 function stageLine(stage: Stage, row: BranchRow, offsetMin: number): string {
   const isNow = stage.id === row.now.id && stage.status === 'todo'
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
@@ -59,7 +82,8 @@ export function renderBranchTab(ui: Ui, a: Args) {
   if (snap === null) {
     return <Text dimColor>読み込み中</Text>
   }
-  const footer = `git ${snap.gitAt} / gh ${snap.ghAt ?? '不明'}`
+  const noOrigin = snap.remotes !== null && !snap.remotes.some(r => r.name === 'origin')
+  const footer = `git ${snap.gitAt} / gh ${noOrigin ? '対象外' : (snap.ghAt ?? '不明')}`
   if (snap.problem !== null) {
     return (
       <Box flexDirection="column" gap={1}>
@@ -76,7 +100,8 @@ export function renderBranchTab(ui: Ui, a: Args) {
   const list = (
     <Box flexDirection="column">
       {snap.branches.map(row => {
-        const label = stripControl(`${row.isCurrent ? '＊' : '　'}${KIND_LABEL[row.kind]} ${row.name}  ${row.now.text}`)
+        const diff = diffText(row.facts.originDiff)
+        const label = stripControl(`${row.isCurrent ? '＊' : '　'}${KIND_LABEL[row.kind]} ${row.name}  ${diff}${row.now.text}`)
         const key = `branch-${row.name}`
 
         return row === chosen ? (
@@ -102,7 +127,12 @@ export function renderBranchTab(ui: Ui, a: Args) {
 
   return (
     <Box flexDirection="column" gap={1}>
-      <Text bold>{`ブランチ ${snap.branches.length}`}</Text>
+      <Box flexDirection="column">
+        <Text bold>{`ブランチ ${snap.branches.length}`}</Text>
+        {remoteLines(snap.remotes).map(line => (
+          <Text dimColor>{stripControl(line)}</Text>
+        ))}
+      </Box>
       <Box key={wide ? 'branch-wide' : 'branch-narrow'} flexDirection={wide ? 'row' : 'column'} gap={wide ? 3 : 1}>
         {list}
         {detail}

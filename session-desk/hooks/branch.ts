@@ -30,6 +30,10 @@ export type Facts = {
   pushedAt: string | null
   pr: Pr | null
   prKnown: boolean
+  // origin があるか。なければ、push 以降の段階は対象外（skipped）。
+  hasRemote: boolean
+  // origin の同名ブランチとの差。ahead: origin にまだない commit、behind: origin だけにある commit。差がない・origin にない・不明のときは null。
+  originDiff: { ahead: number; behind: number } | null
 }
 
 export type Stage = { id: number; label: string; status: Status; at: string | null; note: string | null }
@@ -168,7 +172,13 @@ function statusesOf(f: Facts): Status[] {
       s6 = pr.reviewDecision === '' ? 'skipped' : 'todo'
     }
   }
-  const s8: Status = !merged && (s5 === 'unknown' || s6 === 'unknown' || s7 === 'unknown') ? 'unknown' : 'todo'
+  let s8: Status = !merged && (s5 === 'unknown' || s6 === 'unknown' || s7 === 'unknown') ? 'unknown' : 'todo'
+
+  if (!merged && !f.hasRemote) {
+    // リモートがなければ、push 以降は対象外。比較の基準が決まらないときだけ、段階 4 は不明のまま。
+    s4 = f.ahead === null ? 'unknown' : 'skipped'
+    s5 = s6 = s7 = s8 = 'skipped'
+  }
 
   return [s1, s2, s3, s4, s5, s6, s7, s8]
 }
@@ -202,7 +212,7 @@ export function nowOf(stages: readonly Stage[], f: Facts): Now {
   }
   const stage = stages.find(s => s.status === 'todo')
   if (stage === undefined) {
-    return { id: null, text: '今: PR 以降は不明' }
+    return { id: null, text: f.hasRemote ? '今: PR 以降は不明' : 'commit 済み（リモートなし）' }
   }
   const pr = f.pr
   const texts: Record<number, string> = {
@@ -253,4 +263,34 @@ export function adoptPr(prs: readonly Pr[], relation: (pr: Pr) => Relation): { p
   }
 
   return { pr: null, known: !closed.some(p => relation(p) === 'unknown') }
+}
+
+export type Remote = { name: string; url: string }
+
+// 画面に出す URL。スキームと末尾の .git を落とし、ユーザー名やトークン（user:token@）は必ず除く。
+export function tidyUrl(url: string): string {
+  let rest = url.trim()
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(rest)) {
+    rest = rest.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^[^/@]*@/, '')
+  } else {
+    const scp = /^[^/@:]+@([^/:]+):(.+)$/.exec(rest)
+    if (scp !== null) {
+      rest = `${scp[1]}/${scp[2]}`
+    }
+  }
+
+  return rest.replace(/\/+$/, '').replace(/\.git$/, '')
+}
+
+// `git remote -v` の出力から、fetch 側の名前と URL を、現れた順に取る。
+export function parseRemotes(stdout: string): Remote[] {
+  const found: Remote[] = []
+  for (const line of linesOf(stdout)) {
+    const match = /^(\S+)	(.+) \(fetch\)$/.exec(line.trim())
+    if (match !== null && !found.some(r => r.name === match[1])) {
+      found.push({ name: match[1] as string, url: tidyUrl(match[2] as string) })
+    }
+  }
+
+  return found
 }
