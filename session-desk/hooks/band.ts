@@ -167,6 +167,18 @@ export function parseForkReply(text: string, prevGoal: string | null): { goal: s
   return { goal: fit(obj.goal, GOAL_MAX) ?? prevGoal, reason: fit(obj.reason, REASON_MAX) ?? WAITING, steps }
 }
 
+// fork への指示。fork は会話ごと引き継ぐので、直前の返答は渡さない。
+export function forkPrompt(prevGoal: string | null): string {
+  return [
+    '直前の返答について、JSON だけを返してください。説明や前置きは書かないでください。',
+    '形式: {"goal": "<1行、40字以内>", "reason": "<止まった理由、30字以内>", "steps": [...]}',
+    `前回のゴール: ${prevGoal ?? 'なし'}`,
+    'goal は、会話の目的が大きく変わったときだけ書き換え、そうでなければ前回のゴールをそのまま返す（前回のゴールがなければ新しく書く）。',
+    'steps は、返答が人の判断を求めているとき（質問、案の選択、確認待ち、エラーの対処）だけ、次に頼みそうな行動を最大 4 個、1 つ 40 字以内の具体的な命令文で返す。判断が要らなければ空配列を返す。',
+    '返答にない新しい作業を足さない。',
+  ].join('\n')
+}
+
 // 取り返しのつかない操作を思わせる語。全角は半角に直してから見る。
 export function isRiskyStep(text: string): boolean {
   return /削除|消去|push|force|reset|\brm\b|\bdrop\b|--no-verify/i.test(text.normalize('NFKC'))

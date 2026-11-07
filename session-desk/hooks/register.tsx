@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, compactIn, limitRows, nextAgentsOpen, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, classifyCategory, compactIn, forkPrompt, isRiskyStep, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
@@ -74,6 +74,9 @@ const bandUi = atom(
 )
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
 let toolSeq = 0
+// 自分の fork の印。id は走っている fork の番号（なければ null）。userSent は、fork の開始後に人の送信があったか。
+// fork の最中の turn.start・turn.complete・tool.call は、人の送信のあとの turn.start までは帯に反映しない。session.start で戻す。
+const forkGuard = { seq: 0, id: null as number | null, userSent: false }
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
 const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
@@ -397,6 +400,81 @@ async function answerAction($: any, action: Action, step: Step) {
   }
 }
 
+// ターンの終わりに 1 回だけ fork を呼び、ゴール・理由・選択肢を帯に書く。今のターンの結果でなければ捨てる。
+// 失敗（未回答・例外・解けない JSON）では何も書かず、前回のゴールを残す。トーストは出さない。
+async function askFork($: any, turnId: string): Promise<void> {
+  const id = ++forkGuard.seq
+  forkGuard.id = id
+  forkGuard.userSent = false
+  try {
+    const prevGoal = (await read($, band)).goal
+    // effort は型に無いので、変数に入れてから渡す。
+    const req = { prompt: forkPrompt(prevGoal), effort: 'low' as const }
+    const result = await $.model.fork(req)
+    if (result?.isAnswered !== true) {
+      return
+    }
+    const got = parseForkReply(String(result.text ?? ''), prevGoal)
+    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, confirming: null } : b))
+  } catch {
+    // 選択肢が出ないだけ。
+  } finally {
+    if (forkGuard.id === id) {
+      forkGuard.id = null
+    }
+  }
+}
+
+// 選択肢を押す。危険な語を含むものは、1 回目は確認を出す（confirmed で送る）。
+// 二度押しで 2 回送らないように、送る前に、書く時点の atom から選択肢を消す。
+async function pickStep($: any, i: number, confirmed: boolean) {
+  let sent: { text: string; steps: string[]; turnId: string | null } | null = null
+  await update($, band, b => {
+    const text = b.steps[i]
+    if (text === undefined || (confirmed && b.confirming !== i)) {
+      return b
+    }
+    if (!confirmed && isRiskyStep(text)) {
+      return { ...b, confirming: i }
+    }
+    sent = { text, steps: b.steps, turnId: b.turnId }
+
+    return { ...b, steps: [], confirming: null }
+  })
+  const s = sent as { text: string; steps: string[]; turnId: string | null } | null
+  if (s === null) {
+    return
+  }
+  stepSent.push(s.text)
+  $.prompt.submit({ text: s.text }).then(
+    () => {
+      // 自分の prompt.submit のフックが受けなかったときは、ここで履歴に載せる（二重には載せない）。
+      if (takeStepSent(s.text)) {
+        void update($, history, list => [...list, s.text]).catch(() => {})
+      }
+    },
+    () => {
+      takeStepSent(s.text)
+      void $.ui.toast('依頼を送れませんでした')
+      // 押し直せるように、同じターンのあいだなら選択肢を戻す。
+      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps } : b)).catch(() => {})
+    },
+  )
+}
+
+// 選択肢から送った文のうち、まだ履歴に載せていないもの。
+const stepSent: string[] = []
+
+// 待っている文を 1 つ取り除く。あれば真。
+function takeStepSent(text: string): boolean {
+  const at = stepSent.indexOf(text)
+  if (at >= 0) {
+    stepSent.splice(at, 1)
+  }
+
+  return at >= 0
+}
+
 async function selectTab($: any, desk: Desk, id: Tab) {
   await update($, tab, () => id)
   if (id === 'git') {
@@ -409,6 +487,9 @@ export const register: Register = on => {
   const desk: Desk = { refresher: null, timer: null, ghNextAt: 0, ghFailures: 0, failed: false }
 
   on('tool.call', async ($, e, next) => {
+    if (forkGuard.id !== null) {
+      return next(e)
+    }
     const tool = e.tool as string
     const id = ++toolSeq
     // 帯に出すのはメインのやり取りのツールだけ（サブエージェントのものは除く）。
@@ -434,6 +515,13 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    if (forkGuard.id !== null) {
+      // 人の送信のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
+      if (!forkGuard.userSent || e.agentId !== undefined) {
+        return next(e)
+      }
+      forkGuard.id = null
+    }
     if (e.agentId === undefined) {
       await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
     }
@@ -458,17 +546,27 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (forkGuard.id !== null) {
+      return next(e)
+    }
     if (e.agentId === undefined) {
       const tokens = (e.usage?.input_tokens ?? 0) + (e.usage?.output_tokens ?? 0)
       const stop = e.reason === 'answer' ? null : e.reason
       await update($, band, b => ({ ...b, state: 'stopped', lastTurn: { durationMs: e.durationMs, tokens }, stop }))
     }
     refetch($)
+    const out = await next(e)
+    // ターンの完了を遅らせないように、fork は待たない。
+    if (e.agentId === undefined && e.reason === 'answer') {
+      void askFork($, e.turnId).catch(() => {})
+    }
 
-    return next(e)
+    return out
   })
 
   on('session.start', async ($, e, next) => {
+    forkGuard.id = null
+    forkGuard.userSent = false
     desk.timer?.cancel()
     desk.refresher = createRefresher({
       // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
@@ -514,7 +612,18 @@ export const register: Register = on => {
       e.origin?.kind === 'bridge' ||
       (e.origin?.kind === 'plugin' && e.origin.name === 'session-desk')
     if (byUser && e.text.trim() !== '') {
+      if (e.origin?.kind === 'plugin') {
+        takeStepSent(e.text)
+      }
       await update($, history, list => [...list, e.text])
+    }
+    if (byUser) {
+      forkGuard.userSent = forkGuard.id !== null
+      try {
+        await update($, band, b => ({ ...b, steps: [], confirming: null }))
+      } catch {
+        // 選択肢が残るだけ。
+      }
     }
 
     return next(e)
@@ -669,7 +778,7 @@ export const register: Register = on => {
           )}
         </Box>
         {renderBand({ Box, Text, Button }, {
-          goal: null,
+          goal: b.goal,
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
           lastTurn: b.lastTurn,
           stop: b.stop,
@@ -679,8 +788,9 @@ export const register: Register = on => {
           breakdown: breakdownArgs(u.breakdown, await read($, bandUi)),
           limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
-          steps: null,
-          on: { toggleBreakdown: () => void toggleBreakdown($).catch(() => {}), toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick() {}, confirm() {}, cancel() {} },
+          // 実行中は選択肢を描かない。
+          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, confirming: b.confirming },
+          on: { toggleBreakdown: () => void toggleBreakdown($).catch(() => {}), toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
           columns: e.props.bodyColumns,
         })}
         {body}
