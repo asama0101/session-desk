@@ -168,7 +168,7 @@ test('when a refresh throws, the user is told once instead of the tab silently s
   const toasts: string[] = []
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
+  on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] as any }))
   on('session.cwd', () => {
     throw new Error('boom')
   })

@@ -100,7 +100,7 @@ const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', in
 const mount = ($: any) => $.ui.mount({ ...PANE, surface: 'terminal' })
 const draw = async (ui: any) => textsOf(await ui.drawn())
 const labels = async (ui: any) => labelsOf(await ui.drawn())
-const done = (over: object = {}) => ({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer', ...over })
+const done = (over: object = {}): any => ({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer', ...over })
 const send = ($: any, text: string) => $.prompt.submit({ text, origin: { kind: 'composer' } })
 
 // 1 ターン回して、fork の結果が帯に書かれるまで待つ。
@@ -378,7 +378,7 @@ test('a prompt from any origin during our fork lets the next turn through, and t
   await $.turn.start({ text: 'hi', turnId: 't1' })
   await $.turn.complete(done({ turnId: 't1' }))
   await settle()
-  await $.prompt.submit({ text: 'タスクの通知', origin: { kind: 'task-notification' } })
+  await $.prompt.submit({ text: 'タスクの通知', origin: { kind: 'task-notification' } } as any)
   await $.turn.start({ text: 'タスクの通知', turnId: 't2' })
   expect(await draw(ui)).toContain('⚡ 実行中')
   s.release(reply(GOOD))

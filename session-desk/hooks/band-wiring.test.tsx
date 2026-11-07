@@ -63,7 +63,7 @@ function engine(on: any, status = '?? a\0?? b\0?? c\0', opts: { ticks?: number; 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
 const draw = async (ui: any) => textsOf(await ui.drawn())
 const labels = async (ui: any) => labelsOf(await ui.drawn())
-const done = (over: object) => ({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer', ...over })
+const done = (over: object = {}): any => ({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer', ...over })
 
 test('turn.start shows 実行中; sub-agent turn.start / turn.complete / tool.call leave the state alone', async ($, on) => {
   engine(on)
@@ -140,7 +140,7 @@ test('the branch and the uncommitted count show; with no repository that row is 
 })
 
 test('without a repository the branch row is absent but the run row is drawn', async ($, on) => {
-  engine(on, null)
+  engine(on, null as any)
   await start($)
   await settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -360,7 +360,7 @@ test('a spawned running agent opens the list; closing keeps it closed on the nex
   await settle()
   expect(await draw(ui)).not.toContain('サブエージェント')
   data.list = [agent('running')]
-  await $.agent.spawn({ prompt: 'p' })
+  await $.agent.spawn({ prompt: 'p' } as any)
   await $.turn.start({ text: 'hi', turnId: 't2' })
   await settle()
   let t = await draw(ui)
@@ -686,7 +686,7 @@ test('many events while a fetch runs make at most one more fetch', async ($, on)
   data.usageGate = new Promise<void>(resolve => (release = resolve))
   await $.turn.start({ text: 'hi', turnId: 't1' })
   for (let i = 0; i < 5; i++) await $.tool.call({ tool: 'Grep', pattern: String(i) })
-  await $.agent.spawn({ prompt: 'p' })
+  await $.agent.spawn({ prompt: 'p' } as any)
   await settle()
   expect(data.calls.length).toBe(1)
   data.usageGate = null
@@ -876,7 +876,7 @@ test('a toast that fails to show does not stop the 正確に数える button fro
 test('the header shows model / effort from the /config row and the session directory', async ($, on) => {
   engine(on)
   fakeData(on)
-  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }, { key: 'effortLevel', label: 'Effort level', value: 'high' }] }))
+  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }, { key: 'effortLevel', label: 'Effort level', value: 'high' }] as any }))
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
@@ -892,7 +892,7 @@ test('the header shows model / effort from the /config row and the session direc
 test('without an effort row in /config the header shows only the model and the directory', async ($, on) => {
   engine(on)
   fakeData(on)
-  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }] }))
+  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }] as any }))
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
@@ -1016,7 +1016,7 @@ test('effort is read once per session and turn, not on every band refresh', asyn
   on('config.list', () => {
     reads++
 
-    return { value: [{ key: 'effortLevel', label: 'Effort level', value: 'high' }] }
+    return { value: [{ key: 'effortLevel', label: 'Effort level', value: 'high' }] as any }
   })
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })

@@ -93,7 +93,7 @@ test('agents: none shows nothing; open lists rows with colored marks; closed hid
   expect(colorOf(open, '●')).toBe('blue')
   expect(colorOf(open, '◌')).toBe('gray')
   // 完了は灰色の ○。経過時間は出さない（値が渡っても描かない）。
-  const done = draw({ agents: { running: 1, rows: [ROWS[0], { ...ROWS[0], id: 'c', state: 'done', elapsedMs: 9000 }], open: true } })
+  const done = draw({ agents: { running: 1, rows: [ROWS[0]!, { ...ROWS[0]!, id: 'c', state: 'done', elapsedMs: 9000 }], open: true } })
   expect(textsOf(done)).toContain('完了')
   expect(colorOf(done, '○')).toBe('gray')
   expect(textsOf(done)).toContain('0m05s')
@@ -194,7 +194,7 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
     { label: '5時間枠', percent: 50, remaining: null },
     { label: '7日枠', percent: 65, remaining: null },
     { label: '日', percent: 85, remaining: null },
-  ]
+  ] as any[]
   const tree = draw({ limits })
   // バーは横長の四角（▬）。塗った分は色つき、空きは dimColor。
   const bars = find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^▬+$/.test(n.children[0] as string))
@@ -210,11 +210,11 @@ test('the header reads model / effort, with the effort coloured by level; no eff
   const head = (effort: string | null) => find(draw({ model: 'Opus 5.5', effort, context: CTX(50) }), n => n.type === 'Box' && textsOf(n)[1] === 'Opus 5.5')[0]
   expect(textsOf(head('high'))).toEqual(['🤖', 'Opus 5.5', '/', 'high'])
   const color = (effort: string) => find(head(effort), n => n.type === 'Text' && n.children[0] === effort)[0]
-  expect(color('high').props.color).toBe('#4fd6e0')
-  expect(color('low').props.color).toBe('#8a8f9c')
-  expect(color('medium').props.color).toBeUndefined()
-  expect(color('max').props.bold).toBe(true)
-  expect(color('weird').props.color).toBeUndefined()
+  expect(color('high')!.props.color).toBe('#4fd6e0')
+  expect(color('low')!.props.color).toBe('#8a8f9c')
+  expect(color('medium')!.props.color).toBeUndefined()
+  expect(color('max')!.props.bold).toBe(true)
+  expect(color('weird')!.props.color).toBeUndefined()
   expect(textsOf(head(null))).toEqual(['🤖', 'Opus 5.5'])
   // モデルが分からなければ、effort だけは出さない。
   expect(textsOf(draw({ model: null, effort: 'high', context: CTX(50) })).includes('high')).toBe(false)
@@ -224,7 +224,7 @@ test('a raw model id is shown as the name people read, in the colour of its fami
   const tree = draw({ model: 'claude-sonnet-5-5', effort: 'high', context: CTX(50) })
   const name = find(tree, n => n.type === 'Text' && n.children[0] === 'Sonnet 5.5')[0]
   expect(name).toBeDefined()
-  expect(name.props.color).toBe(modelColor('sonnet'))
+  expect(name!.props.color).toBe(modelColor('sonnet'))
   expect(textsOf(tree)).not.toContain('claude-sonnet-5-5')
 })
 
@@ -236,16 +236,16 @@ test('the directory is a dim line right under the header; it keeps the tail when
   const cut = lines({ cwd: long, columns: 30 })[3] as string
   expect(cut.startsWith('📁 …')).toBe(true)
   expect(cut.endsWith('session-desk')).toBe(true)
-  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === '📁 D:/p')[0].props.dimColor).toBe(true)
+  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === '📁 D:/p')[0]!.props.dimColor).toBe(true)
 })
 
 test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
   expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), '🌿 main')).toBe(BRANCH_COLOR)
   const model = (name: string) => find(draw({ model: name }), n => n.type === 'Text' && n.children[0] === name)[0]
-  expect(model('Opus 5.5').props.color).toBe(modelColor('opus'))
-  expect(model('Opus 5.5').props.bold).toBe(true)
-  expect(model('Sonnet 5.5').props.color).toBe(modelColor('sonnet'))
-  expect(model('x').props.color).toBe(BRANCH_COLOR)
+  expect(model('Opus 5.5')!.props.color).toBe(modelColor('opus'))
+  expect(model('Opus 5.5')!.props.bold).toBe(true)
+  expect(model('Sonnet 5.5')!.props.color).toBe(modelColor('sonnet'))
+  expect(model('x')!.props.color).toBe(BRANCH_COLOR)
 })
 
 test('the panel has no outer frame: it is headed Session + model; sections are split by thin rules, the suggestion by a double rule', async () => {
@@ -253,8 +253,8 @@ test('the panel has no outer frame: it is headed Session + model; sections are s
   const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 }, steps, between: { type: 'Text', props: {}, children: ['TABS'] } as any })
   expect(find(tree, n => n.props?.borderStyle !== undefined)).toHaveLength(0)
   expect(textsOf(tree).slice(0, 3)).toEqual(['Session', '🤖', 'Opus 5.5'])
-  expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginTop).toBeUndefined()
-  expect(find(tree, n => n.props?.key === 'sec-top')[0].props.marginY).toBeUndefined()
+  expect(find(tree, n => n.props?.key === 'sec-top')[0]!.props.marginTop).toBeUndefined()
+  expect(find(tree, n => n.props?.key === 'sec-top')[0]!.props.marginY).toBeUndefined()
   // 見出しと最初の段のあいだに線も空きも無い（見出しは最初の段の一部）。段と段のあいだに細い線、提案の前に二重線。
   expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(3)
   expect(textsOf(tree).filter(x => /^═+$/.test(x))).toHaveLength(1)
@@ -293,7 +293,7 @@ test('the percent and the tokens text take the usage colour: green under 60, yel
 
 test('detail closed hides the per-item rows', async () => {
   const b = BREAKDOWN()
-  b.rows[1].detailOpen = false
+  b.rows[1]!.detailOpen = false
   expect(textsOf(draw({ breakdown: b }))).not.toContain('playwright')
 })
 
@@ -341,7 +341,7 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
       rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
     },
   }
-  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), recommended: 0 } }), [
+  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), recommended: 0 } } as any), [
     'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
   ])
 })
