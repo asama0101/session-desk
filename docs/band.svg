@@ -33,14 +33,14 @@
   <text x="436" y="260" fill="#858585">コンテキスト</text>
   <text x="800" y="260" fill="#6fcf97" font-weight="bold" text-anchor="end">58%</text>
   <text x="924" y="260" fill="#d4d4d4" text-anchor="end">116k / 200k</text>
-  <rect x="434" y="266" width="484" height="16" fill="#3a3d44"/>
-  <rect x="434.0" y="266" width="145.2" height="16" fill="#61afef"/>
-  <rect x="579.2" y="266" width="29.0" height="16" fill="#c678dd"/>
-  <rect x="608.2" y="266" width="24.2" height="16" fill="#56b6c2"/>
-  <rect x="632.4" y="266" width="19.4" height="16" fill="#7ec699"/>
-  <rect x="651.8" y="266" width="9.7" height="16" fill="#e5c07b"/>
-  <rect x="661.5" y="266" width="7.3" height="16" fill="#d19a66"/>
-  <rect x="668.7" y="266" width="46.0" height="16" fill="#9aa0ab"/>
+  <rect x="434" y="274" width="484" height="8" fill="#3a3d44"/>
+  <rect x="434.0" y="274" width="145.2" height="8" fill="#61afef"/>
+  <rect x="579.2" y="274" width="29.0" height="8" fill="#c678dd"/>
+  <rect x="608.2" y="274" width="24.2" height="8" fill="#56b6c2"/>
+  <rect x="632.4" y="274" width="19.4" height="8" fill="#7ec699"/>
+  <rect x="651.8" y="274" width="9.7" height="8" fill="#e5c07b"/>
+  <rect x="661.5" y="274" width="7.3" height="8" fill="#d19a66"/>
+  <rect x="668.7" y="274" width="46.0" height="8" fill="#9aa0ab"/>
   <text x="436" y="318" fill="#61afef">■</text><text x="454" y="318" fill="#d4d4d4">メッセージ 60k</text>
   <text x="436" y="338" fill="#c678dd">■</text><text x="454" y="338" fill="#d4d4d4">MCP 12k</text>
   <text x="436" y="358" fill="#56b6c2">■</text><text x="454" y="358" fill="#d4d4d4">ツール 10k</text>
@@ -53,15 +53,15 @@
   <line x1="432" y1="518" x2="928" y2="518" stroke="#464a54"/>
 
   <text x="436" y="562" fill="#858585">5時間枠</text>
-  <rect x="516" y="550" width="108" height="12" fill="#3a3d44"/><rect x="516" y="550" width="35" height="12" fill="#6fcf97"/>
+  <rect x="516" y="556" width="108" height="6" fill="#3a3d44"/><rect x="516" y="556" width="35" height="6" fill="#6fcf97"/>
   <text x="642" y="562" fill="#6fcf97">32%</text><text x="692" y="562" fill="#858585">残り 3h 10m</text>
   <text x="436" y="586" fill="#858585">7日枠</text>
-  <rect x="516" y="574" width="108" height="12" fill="#3a3d44"/><rect x="516" y="574" width="12" height="12" fill="#6fcf97"/>
+  <rect x="516" y="580" width="108" height="6" fill="#3a3d44"/><rect x="516" y="580" width="12" height="6" fill="#6fcf97"/>
   <text x="642" y="586" fill="#6fcf97">11%</text>
   <text x="436" y="610" fill="#4fd6e0">feat/band-frame</text><text x="602" y="610" fill="#d4d4d4">未 commit 3</text>
   <line x1="432" y1="644" x2="928" y2="644" stroke="#464a54"/>
 
-  <text x="436" y="688" fill="#4fd6e0">▸</text><text x="456" y="688" fill="#d4d4d4" font-weight="bold">定型文</text>
+  <text x="436" y="688" fill="#4fd6e0" font-weight="bold">定型文</text><line x1="436" y1="692" x2="494" y2="692" stroke="#4fd6e0"/>
   <text x="536" y="688" fill="#858585">履歴</text><text x="596" y="688" fill="#858585">Git</text>
   <text x="436" y="734" fill="#d4d4d4">残りのタスクは？</text>
   <text x="436" y="756" fill="#b1b9f9">▶ 送信</text><text x="516" y="756" fill="#ff6b80">× 削除</text><text x="596" y="756" fill="#555a65">▲ 上へ</text><text x="676" y="756" fill="#858585">▼ 下へ</text>

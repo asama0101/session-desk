@@ -342,11 +342,12 @@ test('the context bar is split by the breakdown categories colours', async ($, o
   await $.turn.complete(done())
   await settle()
   const colors = colorsOf(await ui.drawn())
-    .filter(x => /^█+$/.test(x.text))
+    .filter(x => /^▄+$/.test(x.text))
     .map(x => x.color)
   expect(colors).toContain('#61afef')
   expect(colors).toContain('#7ec699')
-  expect(colors).not.toContain('#55555a')
+  // 空きの区間は、暗い色（#55555a）の同じ文字。
+  expect(colors).toContain('#55555a')
   await ui.unmount()
 })
 
