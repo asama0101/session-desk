@@ -43,10 +43,10 @@ export function classifyCategory(c: { name: string; kind: 'used' | 'free' | 'buf
 
 // ---- 整形 ----
 
-// 使用率の数字の色。80% 以上で黄、95% 以上で赤。
+// 使用率の色（ステータスラインと同じ境目）。60% 未満は通常（緑）、60% 以上で黄、80% 以上で赤。
 export function usageColor(percent: number): 'normal' | 'warning' | 'error' {
-  if (percent >= 95) return 'error'
-  if (percent >= 80) return 'warning'
+  if (percent >= 80) return 'error'
+  if (percent >= 60) return 'warning'
   return 'normal'
 }
 

@@ -21,11 +21,12 @@ import {
 } from './band'
 import { stripControl } from './lib'
 
-test('usageColor: 80 is warning, 95 is error', async () => {
-  expect(usageColor(79)).toBe('normal')
-  expect(usageColor(80)).toBe('warning')
-  expect(usageColor(94)).toBe('warning')
-  expect(usageColor(95)).toBe('error')
+test('usageColor: 60 is warning, 80 is error', async () => {
+  expect(usageColor(59)).toBe('normal')
+  expect(usageColor(60)).toBe('warning')
+  expect(usageColor(79)).toBe('warning')
+  expect(usageColor(80)).toBe('error')
+  expect(usageColor(100)).toBe('error')
 })
 
 test('formatDuration and formatTokens', async () => {
