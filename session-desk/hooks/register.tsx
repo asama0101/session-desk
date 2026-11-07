@@ -7,6 +7,7 @@ import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
 import { renderBranchTab } from './branch-view'
+import { renderMore, shownCount } from './more'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
@@ -29,6 +30,8 @@ const history = atom({ plugin: 'session-desk', key: 'history' } as const, [], SH
 const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAULT_QUICK], SHAPE)
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
+// 一覧の「もっと見る」を開いているか。タブごと。
+const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
 const band = atom(
@@ -660,6 +663,8 @@ export const register: Register = on => {
     const u = await read($, usageView)
     const ag = await read($, agentsView)
 
+    const opened = await read($, more)
+    const toggleMore = (id: Tab) => void update($, more, v => ({ ...v, [id]: !v[id] })).catch(() => {})
     let body
     if (current === 'history') {
       const sent = await read($, history)
@@ -671,6 +676,7 @@ export const register: Register = on => {
           {sent
             .map((text, i) => ({ text, n: i + 1 }))
             .reverse()
+            .slice(0, shownCount(sent.length, opened.history))
             .map(({ text, n }) => {
               // 開いているかの判定は 1 回にして、label と見た目で食い違わないようにする。
               const isOpen = chosen === n
@@ -701,6 +707,7 @@ export const register: Register = on => {
                 </Box>
               )
             })}
+          {renderMore({ Text, Button }, { tab: 'history', total: sent.length, open: opened.history, onToggle: () => toggleMore('history') })}
         </Box>
       )
     } else if (current === 'git') {
@@ -712,6 +719,7 @@ export const register: Register = on => {
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, desk, name),
+          more: { open: opened.git, onToggle: () => toggleMore('git') },
         },
       )
     } else {
@@ -731,7 +739,7 @@ export const register: Register = on => {
             }}
           />
           {phrases.length === 0 && <Text dimColor>なし</Text>}
-          {phrases.map((text, i) => (
+          {phrases.slice(0, shownCount(phrases.length, opened.quick)).map((text, i) => (
             <Box flexDirection="column">
               <Text>{stripControl(text)}</Text>
               <Box gap={2}>
@@ -781,6 +789,7 @@ export const register: Register = on => {
               </Box>
             </Box>
           ))}
+          {renderMore({ Text, Button }, { tab: 'quick', total: phrases.length, open: opened.quick, onToggle: () => toggleMore('quick') })}
         </Box>
       )
     }

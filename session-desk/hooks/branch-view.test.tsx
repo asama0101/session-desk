@@ -418,6 +418,54 @@ test('a token in a remote URL never reaches the screen', async () => {
     columns: 80,
     offsetMin: 0,
     onSelect() {},
+    more: { open: false, onToggle() {} },
   })
   expect(JSON.stringify(tree)).not.toContain('tok123')
+})
+
+// 一覧が長いとき: 閉じていれば先頭から 5 件（いまのブランチと選んだブランチは外れていても出す）。「もっと見る」で全部。
+const manyBranches = (count: number, currentIndex: number) => ({
+  problem: null,
+  remotes: [{ name: 'origin', url: 'github.com/a/b' }],
+  warnings: [],
+  gitAt: '00:00:00',
+  ghAt: null,
+  branches: Array.from({ length: count }, (_, i) => ({
+    name: `b${i + 1}`,
+    kind: 'other',
+    isCurrent: i === currentIndex,
+    facts: { originDiff: null },
+    stages: [],
+    now: { id: null, text: '-' },
+  })),
+})
+
+test('git: a long branch list shows 5 rows; the current and chosen branch stay in even when beyond them', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const draw = (over: { selected: string | null; open: boolean; current: number }) =>
+    JSON.stringify(
+      renderBranchTab(ui, {
+        snapshot: manyBranches(8, over.current) as any,
+        selected: over.selected,
+        columns: 80,
+        offsetMin: 0,
+        onSelect() {},
+        more: { open: over.open, onToggle() {} },
+      }),
+    )
+  const rowsIn = (json: string) => [...json.matchAll(/"key":"branch-(b\d+)"/g)].map(m => m[1])
+  const closed = draw({ selected: null, open: false, current: 0 })
+  expect(new Set(rowsIn(closed))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5']))
+  expect(closed).toContain('▾ もっと見る（あと 3 件）')
+  // いまのブランチが 7 番目でも、一覧に出る。あと何件かも、出ている行を引いて数える。
+  const withCurrent = draw({ selected: null, open: false, current: 6 })
+  expect(new Set(rowsIn(withCurrent))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5', 'b7']))
+  expect(withCurrent).toContain('あと 2 件')
+  // 選んだブランチも同じ。
+  expect(new Set(rowsIn(draw({ selected: 'b8', open: false, current: 0 })))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5', 'b8']))
+  const open = draw({ selected: null, open: true, current: 0 })
+  expect(rowsIn(open)).toHaveLength(8)
+  expect(open).toContain('▴ 閉じる')
+  // 5 件以下なら、ボタンはない。
+  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} } }))).not.toContain('more-git')
 })

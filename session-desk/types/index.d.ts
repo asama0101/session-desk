@@ -43,6 +43,7 @@ declare module 'claude-code' {
         startedAt: Record<string, number>
       }
       bandUi: { exact: boolean; detail: string[] }
+      more: { quick: boolean; history: boolean; git: boolean }
       branchSel: string | null
     }
   }

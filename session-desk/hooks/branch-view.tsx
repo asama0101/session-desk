@@ -1,5 +1,6 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
 import { tidyUrl } from './branch'
+import { renderMore, shownCount } from './more'
 import type { BranchRow, Kind, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
@@ -102,6 +103,8 @@ type Args = {
   columns: number
   offsetMin: number
   onSelect(name: string): void
+  // 一覧の「もっと見る」。閉じているときは、先頭から数件と、いまのブランチ・選んだブランチだけを出す。
+  more: { open: boolean; onToggle(): void }
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -125,9 +128,13 @@ export function renderBranchTab(ui: Ui, a: Args) {
   const chosen = snap.branches.find(b => b.name === a.selected) ?? current ?? snap.branches[0]
   const wide = a.columns >= WIDE_COLUMNS
 
+  // 閉じているとき: 先頭から LIST_LIMIT 件。範囲の外でも、いまのブランチと選んだブランチは出す（経過の見出しが、一覧から消えないように）。
+  const limit = shownCount(snap.branches.length, a.more.open)
+  const visible = snap.branches.filter((row, i) => i < limit || row === current || row === chosen)
+
   const list = (
     <Box flexDirection="column">
-      {snap.branches.map(row => {
+      {visible.map(row => {
         const diff = diffText(row.facts.originDiff)
         const label = stripControl(`${row.isCurrent ? '＊' : '　'}${KIND_LABEL[row.kind]} ${row.name}  ${diff}${row.now.text}`)
         const key = `branch-${row.name}`
@@ -140,6 +147,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
           </Button>
         )
       })}
+      {renderMore({ Text, Button }, { tab: 'git', total: snap.branches.length, shown: visible.length, open: a.more.open, onToggle: () => a.more.onToggle() })}
     </Box>
   )
 

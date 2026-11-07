@@ -139,6 +139,31 @@ test('every row has the same four actions in the same order: 送信, 削除, 上
   await ui.unmount()
 })
 
+const SEVEN = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+
+test('quick: only the first 5 phrases show; 「もっと見る」 opens the rest and 「閉じる」 closes them', async ($, on) => {
+  fakeEngine(on, { quick: SEVEN })
+  await start($)
+  const ui = await open($)
+  expect(await labels(ui)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  expect(JSON.stringify(await ui.find({ key: 'more-quick' }))).toContain('▾ もっと見る（あと 2 件）')
+  await ui.press({ key: 'more-quick' })
+  expect(await labels(ui)).toEqual(SEVEN)
+  expect(JSON.stringify(await ui.find({ key: 'more-quick' }))).toContain('▴ 閉じる')
+  await ui.press({ key: 'more-quick' })
+  expect(await labels(ui)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  await ui.unmount()
+})
+
+test('quick: 5 phrases or fewer have no 「もっと見る」', async ($, on) => {
+  fakeEngine(on, { quick: SEVEN.slice(0, 5) })
+  await start($)
+  const ui = await open($)
+  expect(await labels(ui)).toEqual(SEVEN.slice(0, 5))
+  expect(await ui.find({ key: 'more-quick' })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('pressing a phrase submits its exact text', async ($, on) => {
   const { submitted } = fakeEngine(on)
   await start($)
