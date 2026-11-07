@@ -194,10 +194,10 @@ test('summarizeAgents: counts only running and pending', async () => {
   )
   expect(r.running).toBe(2)
   expect(r.rows.map(x => x.state)).toEqual(['running', 'running', 'waiting', 'waiting', 'done', 'done', 'done'])
-  expect(r.rows[0].elapsedMs).toBe(3000)
-  expect(r.rows[1].elapsedMs).toBe(null)
+  expect(r.rows[0]!.elapsedMs).toBe(3000)
+  expect(r.rows[1]!.elapsedMs).toBe(null)
   // 完了した行は、開始時刻があっても経過時間を持たない。
-  expect(r.rows[4].elapsedMs).toBe(null)
+  expect(r.rows[4]!.elapsedMs).toBe(null)
 })
 
 test('nextAgentsOpen: opens on 0 to 1, respects a manual close, resets at 0', async () => {

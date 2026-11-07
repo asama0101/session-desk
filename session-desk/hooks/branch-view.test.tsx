@@ -444,6 +444,7 @@ test('a token in a remote URL never reaches the screen', async () => {
     onSelect() {},
     more: { open: false, onToggle() {} },
     onNext() {},
+    release: { skipped: [], onSkip() {} },
     busy: false,
   })
   expect(JSON.stringify(tree)).not.toContain('tok123')
@@ -480,6 +481,7 @@ test('git: a long branch list shows 5 rows; the current and chosen branch stay i
         onSelect() {},
         more: { open: over.open, onToggle() {} },
         onNext() {},
+        release: { skipped: [], onSkip() {} },
     busy: false,
       }),
     )
@@ -497,7 +499,7 @@ test('git: a long branch list shows 5 rows; the current and chosen branch stay i
   expect(rowsIn(open)).toHaveLength(8)
   expect(open).toContain('▴ 閉じる')
   // 5 件以下なら、ボタンはない。
-  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {} }))).not.toContain('more-git')
+  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skipped: [], onSkip() {} }, busy: false }))).not.toContain('more-git')
 })
 
 test('next button: the current branch gets a button on its 今 row; pressing it sends the request once', async ($, on) => {

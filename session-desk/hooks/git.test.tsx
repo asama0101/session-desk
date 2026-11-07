@@ -33,7 +33,7 @@ const AHEAD = 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t2 0\nrefs/heads/main\t
 const REMOTE_V =
   'origin\thttps://github.com/a/b.git (fetch)\norigin\thttps://github.com/a/b.git (push)\n'
 
-type Setup = Partial<Record<string, Reply>> & { refs?: string; ahead?: string; gh?: Reply; status?: Reply; remote?: Reply }
+type Setup = { [key: string]: Reply | string | undefined; refs?: string; ahead?: string; gh?: Reply; status?: Reply; remote?: Reply }
 
 // 偽の run。git の呼び出しは argv の [1] が --no-optional-locks でなければ違反として記録する。
 function fake(setup: Setup = {}) {
@@ -45,7 +45,7 @@ function fake(setup: Setup = {}) {
       violations.push(key)
     }
     calls.push(key)
-    let reply: Reply | undefined = setup[key]
+    let reply = setup[key] as Reply | undefined
     if (reply === undefined) {
       if (key === 'rev-parse --git-dir') reply = ok('.git\n')
       else if (key === 'symbolic-ref -q refs/remotes/origin/HEAD') reply = ok('refs/remotes/origin/main\n')

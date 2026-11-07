@@ -133,9 +133,9 @@ test('every row has the same four actions in the same order: 送信, 削除, 上
     expect(words(row)).toEqual(['▶ 送信', '× 削除', '▲ 上へ', '▼ 下へ'])
   }
   // 先頭の「上へ」と末尾の「下へ」は、押せない字。
-  expect(rows[0].children[2].type).toBe('Text')
-  expect(rows[1].children.map(c => c.type)).toEqual(['Button', 'Button', 'Button', 'Button'])
-  expect(rows[2].children[3].type).toBe('Text')
+  expect(rows[0]!.children[2]!.type).toBe('Text')
+  expect(rows[1]!.children.map(c => c.type)).toEqual(['Button', 'Button', 'Button', 'Button'])
+  expect(rows[2]!.children[3]!.type).toBe('Text')
   await ui.unmount()
 })
 
