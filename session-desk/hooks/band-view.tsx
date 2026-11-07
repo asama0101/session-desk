@@ -77,7 +77,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
       <Box gap={2} flexWrap="wrap">
         <Text dimColor>停止中</Text>
         {a.lastTurn !== null && <Text>{`直近 ${formatDuration(a.lastTurn.durationMs)}`}</Text>}
-        {a.lastTurn !== null && <Text>{`${formatTokens(a.lastTurn.tokens)} tokens`}</Text>}
+        {a.lastTurn !== null && a.lastTurn.tokens > 0 && <Text>{`${formatTokens(a.lastTurn.tokens)} tokens`}</Text>}
         {a.stop !== null && <Text color={a.stop === 'aborted' ? 'warning' : 'error'}>{STOP_TEXT[a.stop]}</Text>}
       </Box>
     ) : null

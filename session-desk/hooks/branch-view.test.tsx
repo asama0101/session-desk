@@ -514,10 +514,12 @@ test('yes/no: the second delete confirmation can wrap in a narrow panel', async 
   const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
   await start($)
   const ui = await open($, e.calls)
-  expect(JSON.stringify(await ui.drawn())).not.toContain('"flexWrap":"wrap"')
+  // 帯の行も折り返すので、数が増えたかで確かめる。
+  const wraps = async () => JSON.stringify(await ui.drawn()).split('"flexWrap":"wrap"').length
+  const before = await wraps()
   await pressText(ui, 'はい')
   await flush()
-  expect(JSON.stringify(await ui.drawn())).toContain('"flexWrap":"wrap"')
+  expect(await wraps()).toBeGreaterThan(before)
   await ui.unmount()
 })
 

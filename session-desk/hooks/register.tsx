@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
+import { addTool, removeTool, startTurn, toolLabel } from './band'
+import { renderBand } from './band-view'
 import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
@@ -29,6 +31,22 @@ const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
+const band = atom(
+  { plugin: 'session-desk', key: 'band' } as const,
+  {
+    run: { startedAt: null as number | null, tools: [] as { id: number; name: string }[] },
+    state: null as 'running' | 'stopped' | null,
+    lastTurn: null as { durationMs: number; tokens: number } | null,
+    stop: null as 'error' | 'refusal' | 'aborted' | null,
+    goal: null as string | null,
+    reason: '',
+    steps: [] as string[],
+    confirming: null as number | null,
+    turnId: null as string | null,
+  },
+)
+// 実行中のツールの印。呼び出しごとに 1 つ増やす。
+let toolSeq = 0
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
 const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
@@ -195,12 +213,44 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const tool = e.tool as string
-    if (!['Bash', 'Edit', 'Write'].includes(tool)) {
-      return next(e)
+    const id = ++toolSeq
+    // 帯に出すのはメインのやり取りのツールだけ（サブエージェントのものは除く）。
+    const shown = (e as { agentId?: unknown }).agentId === undefined
+    if (shown) {
+      await update($, band, b => ({ ...b, run: addTool(b.run, id, tool) }))
     }
+    const refreshes = ['Bash', 'Edit', 'Write'].includes(tool)
     const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
 
-    return around(() => next(e), () => desk.refresher?.request(wantsGh(command)))
+    return around(
+      () => next(e),
+      () => {
+        if (refreshes) {
+          desk.refresher?.request(wantsGh(command))
+        }
+        if (shown) {
+          void update($, band, b => ({ ...b, run: removeTool(b.run, id) }))
+        }
+      },
+    )
+  })
+
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
+    }
+
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (e.agentId === undefined) {
+      const tokens = (e.usage?.input_tokens ?? 0) + (e.usage?.output_tokens ?? 0)
+      const stop = e.reason === 'answer' ? null : e.reason
+      await update($, band, b => ({ ...b, state: 'stopped', lastTurn: { durationMs: e.durationMs, tokens }, stop }))
+    }
+
+    return next(e)
   })
 
   on('session.start', async ($, e, next) => {
@@ -257,6 +307,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Input, Text } = $.ui.resolve(e)
     const current = await read($, tab)
+    const b = await read($, band)
 
     let body
     if (current === 'history') {
@@ -399,6 +450,21 @@ export const register: Register = on => {
             ),
           )}
         </Box>
+        {renderBand({ Box, Text, Button }, {
+          goal: null,
+          run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
+          lastTurn: b.lastTurn,
+          stop: b.stop,
+          agents: { running: 0, rows: [], open: false },
+          model: null,
+          context: null,
+          breakdown: null,
+          limits: [],
+          git: await read($, bandGit),
+          steps: null,
+          on: { toggleBreakdown() {}, toggleAgents() {}, exact() {}, toggleDetail() {}, pick() {}, confirm() {}, cancel() {} },
+          columns: e.props.bodyColumns,
+        })}
         {body}
       </Box>
     )
