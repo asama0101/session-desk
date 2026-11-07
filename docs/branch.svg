@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">「Git」タブ（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下にリモートの URL がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: push」。その下に経過が 8 段階で並び、済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に「push しますか？」の確認と、「はい」「いいえ」がある。一番下に、git と gh を読んだ時刻がある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下にリモートの URL がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: レビュー」。その下に経過が 9 段階で並び、済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に、git と gh を読んだ時刻がある。一番下に、git と gh を読んだ時刻がある。</desc>
 
   <!-- 端末 -->
   <rect x="0" y="0" width="960" height="500" rx="10" fill="#1e1e1e"/>
@@ -36,7 +36,7 @@
   <text x="424" y="138" fill="#858585">origin  github.com/asama0101/session-desk</text>
 
   <!-- 一覧（右端が「今」。選択中は太字） -->
-  <text x="424" y="170" fill="#b1b9f9" font-weight="bold">＊feat feat/login  ↑2  次: push</text>
+  <text x="424" y="170" fill="#b1b9f9" font-weight="bold">＊feat feat/login  ↑2  次: レビュー</text>
   <text x="424" y="192" fill="#6fcf97">　docs docs/readme  マージ待ち</text>
   <text x="424" y="214" fill="#858585">　既定 main  既定</text>
 
@@ -44,17 +44,13 @@
   <text x="424" y="252" fill="#6fcf97">✓ ブランチを切る  11/07 13:55</text>
   <text x="424" y="274" fill="#6fcf97">✓ 編集  11/07 13:58</text>
   <text x="424" y="296" fill="#6fcf97">✓ commit  11/07 14:20  2 件</text>
-  <text x="424" y="318" fill="#f2c94c" font-weight="bold">● push  次: push</text>
-  <text x="424" y="340" fill="#858585">○ PR</text>
-  <text x="424" y="362" fill="#858585">○ レビュー</text>
-  <text x="424" y="384" fill="#858585">○ マージ</text>
-  <text x="424" y="406" fill="#858585">○ 削除</text>
-
-  <!-- 質問 -->
-  <text x="424" y="440" fill="#f2c94c">push しますか？</text>
-  <text x="610" y="440" fill="#6fcf97">はい</text>
-  <text x="662" y="440" fill="#ff6b80">いいえ</text>
+  <text x="424" y="318" fill="#f2c94c" font-weight="bold">● レビュー（PR 前）  次: レビュー</text>
+  <text x="424" y="340" fill="#858585">○ push</text>
+  <text x="424" y="362" fill="#858585">○ PR</text>
+  <text x="424" y="384" fill="#858585">○ レビュー（PR 上）</text>
+  <text x="424" y="406" fill="#858585">○ マージ</text>
+  <text x="424" y="428" fill="#858585">○ 削除</text>
 
   <!-- 最後に読んだ時刻 -->
-  <text x="424" y="476" fill="#858585">git 14:21:05 / gh 14:21:00</text>
+  <text x="424" y="462" fill="#858585">git 14:21:05 / gh 14:21:00</text>
 </svg>
