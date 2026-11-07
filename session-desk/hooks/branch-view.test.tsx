@@ -63,12 +63,24 @@ type Over = {
   diff?: string
   status?: string
   symref?: string
+  refsTruncated?: boolean
+  refsExit?: number
+  submitFails?: boolean
 }
 
 function engine(on: any, over: Over = {}) {
   const calls: string[] = []
   const submitted: string[] = []
+  const toasts: string[] = []
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
   on('prompt.submit', (_: any, e: any) => {
+    if (over.submitFails) {
+      throw new Error('refused')
+    }
     submitted.push(e.text)
 
     return { text: e.text }
@@ -90,7 +102,7 @@ function engine(on: any, over: Over = {}) {
     if (key === 'rev-parse --git-dir') result = { exitCode: 0, stdout: '.git\n', ...over.repo }
     else if (key === 'symbolic-ref -q refs/remotes/origin/HEAD') result = { exitCode: 0, stdout: over.symref ?? 'refs/remotes/origin/main\n' }
     else if (key === 'symbolic-ref -q HEAD') result = { exitCode: 0, stdout: 'refs/heads/feat/a\n', ...over.head }
-    else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) result = { exitCode: 0, stdout: over.refs ?? REFS }
+    else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) result = { exitCode: over.refsExit ?? 0, stdout: over.refs ?? REFS, ...(over.refsTruncated ? { isStdoutTruncated: true } : {}) }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) result = { exitCode: 0, stdout: AHEAD }
     else if (key === 'status --porcelain=v1 -z') result = { exitCode: 0, stdout: over.status ?? '' }
     else if (key === 'remote -v') result = { exitCode: 0, stdout: REMOTE_V, ...over.remote }
@@ -103,7 +115,7 @@ function engine(on: any, over: Over = {}) {
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls, submitted }
+  return { calls, submitted, toasts }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -364,7 +376,7 @@ test('yes/no: the next step on the current branch is asked, and yes sends the re
   expect(await hasText(ui, 'いいえ')).toBe(true)
   await pressText(ui, 'はい')
   await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ feat/a を push してください'])
+  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」を push してください'])
   expect(await hasText(ui, 'はい')).toBe(false)
   expect(await texts(ui)).not.toContain('push しますか？')
   await ui.unmount()
@@ -388,7 +400,7 @@ test('yes/no: editing asks whether to commit', async ($, on) => {
   expect(await texts(ui)).toContain('commit しますか？')
   await pressText(ui, 'はい')
   await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ feat/a の未コミットの変更を commit してください'])
+  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」の未コミットの変更を commit してください'])
   await ui.unmount()
 })
 
@@ -413,7 +425,7 @@ test('yes/no: deleting needs a second confirmation before anything is sent', asy
   expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
   await pressText(ui, '削除する')
   await flush()
-  expect(e.submitted).toEqual(['はい。マージ済みの作業ブランチ docs/b を削除してください'])
+  expect(e.submitted).toEqual(['はい。マージ済みの作業ブランチ「docs/b」を削除してください'])
   await ui.unmount()
 })
 
@@ -440,6 +452,76 @@ test('yes/no: the PR request names the repository default branch (master)', asyn
   expect(await texts(ui)).toContain('PR を作りますか？')
   await pressText(ui, 'はい')
   await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ feat/a の PR を master 向けに作ってください'])
+  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」の PR を master 向けに作ってください'])
+  await ui.unmount()
+})
+
+test('with no branch to show (the list was too long), the screen says ブランチがありません, not the default-branch note', async ($, on) => {
+  const e = engine(on, { refsTruncated: true })
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('ブランチがありません')
+  expect(lines).toContain('ブランチ一覧が長すぎます')
+  expect(lines).not.toContain('経過はありません（既定ブランチ）')
+  await ui.unmount()
+})
+
+test('the problem texts tell a git failure apart from a timeout', async ($, on) => {
+  const e = engine(on, { refsExit: 128 })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('git の実行に失敗しました')
+  await ui.unmount()
+})
+
+test('yes/no: a half-finished delete confirmation does not follow you to another branch', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
+  await ui.press({ key: 'branch-main' })
+  await flush()
+  await ui.press({ key: 'branch-docs/b' })
+  await settle(e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('削除しますか？')
+  expect(lines).not.toContain('本当に docs/b を削除しますか？')
+  await ui.unmount()
+})
+
+test('yes/no: if the request cannot be sent, the user is told', async ($, on) => {
+  const e = engine(on, { submitFails: true })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  await flush()
+  expect(e.toasts).toEqual(['依頼を送れませんでした'])
+  await ui.unmount()
+})
+
+test('yes/no: the second delete confirmation can wrap in a narrow panel', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('"flexWrap":"wrap"')
+  await pressText(ui, 'はい')
+  await flush()
+  expect(JSON.stringify(await ui.drawn())).toContain('"flexWrap":"wrap"')
+  await ui.unmount()
+})
+
+test('yes/no: after a failed send the question comes back, so it can be answered again', async ($, on) => {
+  const e = engine(on, { submitFails: true })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  await flush()
+  expect(e.toasts).toEqual(['依頼を送れませんでした'])
+  expect(await hasText(ui, 'はい')).toBe(true)
   await ui.unmount()
 })

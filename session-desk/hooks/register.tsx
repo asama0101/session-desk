@@ -2,10 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { decideAnswer } from './branch'
+import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
-import { collect, enrich } from './git'
+import { collect, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
   DEFAULT_QUICK,
@@ -76,36 +76,72 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     return
   }
   const cwd: string = await $.session.cwd()
-  const chosen = await read($, branchSel)
-  const collected = await collect(runOf($), (await read($, snapshot)) as Snapshot | null, {
-    withGh,
+  const prev = (await read($, snapshot)) as Snapshot | null
+  // 作業フォルダが変わったら、前のリポジトリの表示と、gh の後退間隔を捨てて、gh も読み直す。
+  const moved = prev !== null && prev.cwd !== cwd
+  if (moved) {
+    desk.ghFailures = 0
+    desk.ghNextAt = 0
+    await update($, snapshot, () => null)
+    await update($, branchAct, () => ({ dismissed: [], confirm: null }))
+  }
+  const readGh = withGh || moved
+  const collected = await collect(runOf($), moved ? null : prev, {
+    withGh: readGh,
     cwd,
-    selected: chosen,
+    selected: await read($, branchSel),
     now: () => new Date(),
   })
   if ((await $.session.cwd()) !== cwd) {
     return
   }
-  if (withGh) {
+  if (readGh) {
     desk.ghFailures = collected.ghProblem ? desk.ghFailures + 1 : 0
     desk.ghNextAt = Date.now() + ghDelayMs(desk.ghFailures)
   }
   // 選んだブランチがなくなったら、選択を外して、チェックアウト中のブランチに戻す。
+  // 取得のあいだに選び直されることがあるので、選択は取得のあとで読む。
+  const chosen = await read($, branchSel)
   const gone = chosen !== null && !collected.branches.some(b => b.name === chosen)
   if (gone) {
     await update($, branchSel, () => null)
   }
-  const target = gone || chosen === null ? collected.branches.find(b => b.isCurrent)?.name : chosen
+  const current = collected.branches.find(b => b.isCurrent)
+  const target = gone || chosen === null ? current?.name : chosen
   const next = target === undefined ? collected : await enrich(runOf($), collected, target)
+  // 削除の 2 段目の確認は、同じ質問のあいだだけ有効にする（状態が進んだら、1 段目に戻す）。
+  // 質問は、PR を引き直したあとの現在ブランチ（next）から作る。
+  const nowCurrent = next.branches.find(b => b.isCurrent)
+  const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
+  await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
 }
 
-async function selectBranch($: any, name: string) {
+async function selectBranch($: any, desk: Desk, name: string) {
+  const before = await read($, branchSel)
   await update($, branchSel, () => name)
+  // ほかのブランチへ移ったら、削除の 2 段目の確認は 1 段目に戻す（同じブランチを押し直したときは戻さない）。
+  if (before !== name) {
+    await update($, branchAct, state => ({ ...state, confirm: null }))
+  }
   const snap = (await read($, snapshot)) as Snapshot | null
   if (snap !== null) {
     const next = await enrich(runOf($), snap, name)
-    await update($, snapshot, () => next)
+    // 取得のあいだに別のブランチが選ばれていたら、古い結果は書かない（選び直した側が取る）。
+    if ((await read($, branchSel)) !== name) {
+      return
+    }
+    let replaced = false
+    await update($, snapshot, cur => {
+      const result = replaceIfSame(cur as Snapshot | null, snap, next)
+      replaced = result === next
+
+      return result
+    })
+    // 取得のあいだに別の更新が入っていたら、日時が抜けないように、読み直す。
+    if (!replaced) {
+      desk.refresher?.request(false)
+    }
   }
 }
 
@@ -123,16 +159,22 @@ async function answerAction($: any, action: Action, step: Step) {
 
     return
   }
-  await update($, branchAct, state => ({ dismissed: [...state.dismissed, action.key], confirm: null }))
+  await update($, branchAct, state => ({ dismissed: remember(state.dismissed, action.key, 20), confirm: null }))
   if (decision === 'send') {
-    void $.prompt.submit({ text: action.prompt })
+    // 送れなかったときは、確認が消えただけで終わらないように、知らせる。
+    $.prompt.submit({ text: action.prompt }).catch(() => {
+      void $.ui.toast('依頼を送れませんでした')
+      // 押し直せるように、答え済みの記録を外す。
+      void update($, branchAct, state => ({ ...state, dismissed: state.dismissed.filter(k => k !== action.key) }))
+    })
   }
 }
 
 async function selectTab($: any, desk: Desk, id: Tab) {
   await update($, tab, () => id)
   if (id === 'branch') {
-    desk.refresher?.request(true)
+    // gh が失敗して間隔が延びている間は、タブを押しても gh は読み直さない（git は読み直す）。
+    desk.refresher?.request(desk.ghFailures === 0 || Date.now() >= desk.ghNextAt)
   }
 }
 
@@ -255,7 +297,7 @@ export const register: Register = on => {
           selected: await read($, branchSel),
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
-          onSelect: name => void selectBranch($, name),
+          onSelect: name => void selectBranch($, desk, name),
           act: {
             dismissed: act.dismissed,
             confirm: act.confirm,

@@ -275,21 +275,23 @@ export function tidyUrl(url: string): string {
   } else {
     const scp = /^[^/@:]+@([^/:]+):(.+)$/.exec(rest)
     if (scp !== null) {
-      rest = `${scp[1]}/${scp[2]}`
+      rest = `${scp[1]}/${(scp[2] as string).replace(/^\/+/, '')}`
     }
   }
 
   return rest.replace(/[?#].*$/, '').replace(/\/+$/, '').replace(/\.git$/, '')
 }
 
-// `git remote -v` の出力から、fetch 側の名前と URL を、現れた順に取る。
+// `git remote -v` の出力から、名前と URL を、現れた順に取る。URL が空のリモートも落とさない。
 export function parseRemotes(stdout: string): Remote[] {
   const found: Remote[] = []
   for (const line of linesOf(stdout)) {
-    const match = /^(\S+)\t(.+) \(fetch\)$/.exec(line.trim())
-    if (match !== null && !found.some(r => r.name === match[1])) {
-      found.push({ name: match[1] as string, url: tidyUrl(match[2] as string) })
+    const match = /^(\S+)\t(.*?)(?: \((fetch|push)\))?$/.exec(line.replace(/\r$/, ''))
+    if (match === null || match[3] === 'push' || found.some(r => r.name === match[1])) {
+      continue
     }
+    const url = tidyUrl(match[2] as string)
+    found.push({ name: match[1] as string, url: url === '' ? '（URL なし）' : url })
   }
 
   return found
@@ -312,19 +314,28 @@ export function actionOf(row: BranchRow, base: string | null = null): Action | n
   const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
   switch (row.now.id) {
     case 3:
-      return row.facts.dirty === true
-        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ ${row.name} の未コミットの変更を commit してください` }
+      // マージ済みのブランチに commit は促さない。
+      return row.facts.dirty === true && row.facts.pr?.state !== 'MERGED'
+        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ「${row.name}」の未コミットの変更を commit してください` }
         : null
     case 4:
-      return { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ ${row.name} を push してください` }
+      // origin のほうが進んでいるときは、push を聞かない（先に取り込みが要る）。
+      return (row.facts.originDiff?.behind ?? 0) > 0
+        ? null
+        : { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ「${row.name}」を push してください` }
     case 5:
-      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ ${row.name} の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
+      // push の状態が不明なときは、PR を聞かない。
+      if (row.facts.pushed === null) {
+        return null
+      }
+
+      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
     case 8:
       return {
         key,
         kind: 'delete',
         question: '削除しますか？',
-        prompt: `はい。マージ済みの作業ブランチ ${row.name} を削除してください`,
+        prompt: `はい。マージ済みの作業ブランチ「${row.name}」を削除してください`,
       }
     default:
       return null
@@ -359,4 +370,9 @@ export function decideAnswer(
   }
 
   return action.kind === 'delete' && confirm === action.key ? 'send' : 'ignore'
+}
+
+// 答え済みの確認の key を覚える。同じ key は 1 つにし、新しい順に max 件だけ残す。
+export function remember(list: readonly string[], key: string, max: number): string[] {
+  return [...list.filter(k => k !== key), key].slice(-max)
 }

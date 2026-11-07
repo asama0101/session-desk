@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyDetail, collect, detailOf, enrich, pickBudget, requeryPr } from './git'
+import { applyDetail, collect, detailOf, enrich, pickBudget, replaceIfSame, requeryPr } from './git'
 import type { Run, Snapshot } from './git'
 
 type Reply = { exitCode?: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | 'reject'
@@ -249,10 +249,10 @@ test('applyDetail fills the dates and keeps the statuses', async () => {
 
 test('requeryPr adopts a PR found by --head, and reports unknown when gh fails', async () => {
   const found = fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': ok(JSON.stringify([GH_PR({})])) })
-  const r = await requeryPr(found.run, 'docs/b', 'B1')
+  const r = await requeryPr(found.run, 'docs/b', 'B1', 3, 'refs/remotes/origin/main')
   expect(r.known).toBe(true)
   expect(r.pr?.state).toBe('MERGED')
-  const failed = await requeryPr(fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': { exitCode: 1 } }).run, 'docs/b', 'B1')
+  const failed = await requeryPr(fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': { exitCode: 1 } }).run, 'docs/b', 'B1', 3, 'refs/remotes/origin/main')
   expect(failed).toEqual({ pr: null, known: false })
 })
 
@@ -366,4 +366,64 @@ test('the default branch row also shows how far it is from origin, and the unpus
   const ahead = await collect(fake({ refs, 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('0\t2\n') }).run, null, OPTS)
   expect(row(ahead, 'main')?.facts.originDiff).toEqual({ ahead: 2, behind: 0 })
   expect(ahead.warnings).toContain('既定ブランチに未 push の commit があります')
+})
+
+test('a branch re-cut from a stale main (no commits of its own) does not adopt the old merged PR of the same name', async () => {
+  const gh = ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'OLD' })]))
+  const f = fake({ gh, ahead: 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t0 0\nrefs/heads/main\t0 0\n', 'merge-base --is-ancestor refs/heads/feat/a OLD': { exitCode: 0 } })
+  const snap = await collect(f.run, null, OPTS)
+  expect(row(snap, 'feat/a')?.facts.pr).toBe(null)
+  expect(row(snap, 'feat/a')?.now.text).toBe('次: 編集')
+})
+
+test('a branch that was fast-forward merged (tip equals the PR head, no commits ahead) still reads as merged', async () => {
+  const gh = ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'A1' })]))
+  const f = fake({ gh, ahead: 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t0 0\nrefs/heads/main\t0 0\n' })
+  const snap = await collect(f.run, null, OPTS)
+  expect(row(snap, 'feat/a')?.facts.pr?.state).toBe('MERGED')
+})
+
+test('requeryPr also refuses an old merged PR when the branch has no commits of its own', async () => {
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const f = fake({ [headKey]: ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'OLD' })])), 'merge-base --is-ancestor refs/heads/feat/a OLD': { exitCode: 0 } })
+  expect(await requeryPr(f.run, 'feat/a', 'A1', 0, 'refs/remotes/origin/main')).toEqual({ pr: null, known: true })
+  expect((await requeryPr(f.run, 'feat/a', 'A1', 2, 'refs/remotes/origin/main')).pr?.state).toBe('MERGED')
+})
+
+test('problems: a failing for-each-ref is a git failure, not "no commit"', async () => {
+  const refsKey = 'for-each-ref --format=%(refname)%09%(objectname)%09%(committerdate:iso-strict) refs/heads refs/remotes/origin'
+  const snap = await collect(fake({ [refsKey]: { exitCode: 128, stderr: 'fatal: bad object' } }).run, null, OPTS)
+  expect(snap.problem).toBe('git-failed')
+})
+
+test('replaceIfSame writes the new snapshot only when the screen still shows the one it was built from', async () => {
+  const base = await collect(fake().run, null, OPTS)
+  const next = { ...base, warnings: ['x'] }
+  expect(replaceIfSame(base, base, next)).toBe(next)
+  expect(replaceIfSame({ ...base, gitAt: '00:00:00' }, base, next)).not.toBe(next)
+  expect(replaceIfSame({ ...base, cwd: 'D:/other' }, base, next)?.cwd).toBe('D:/other')
+  expect(replaceIfSame(null, base, next)).toBe(null)
+})
+
+test('a PR merged with a merge commit and updated after the branch was cut still reads as merged (its head is in the base)', async () => {
+  const gh = ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'NEWER' })]))
+  const f = fake({
+    gh,
+    ahead: 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t0 0\nrefs/heads/main\t0 0\n',
+    'merge-base --is-ancestor refs/heads/feat/a NEWER': { exitCode: 0 },
+    'merge-base --is-ancestor NEWER refs/remotes/origin/main': { exitCode: 0 },
+  })
+  const snap = await collect(f.run, null, OPTS)
+  expect(row(snap, 'feat/a')?.facts.pr?.state).toBe('MERGED')
+  expect(f.violations).toEqual([])
+})
+
+test('requeryPr keeps a merge-commit merged PR for a branch with no commits ahead', async () => {
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const f = fake({
+    [headKey]: ok(JSON.stringify([GH_PR({ headRefName: 'feat/a', headRefOid: 'NEWER' })])),
+    'merge-base --is-ancestor refs/heads/feat/a NEWER': { exitCode: 0 },
+    'merge-base --is-ancestor NEWER refs/remotes/origin/main': { exitCode: 0 },
+  })
+  expect((await requeryPr(f.run, 'feat/a', 'A1', 0, 'refs/remotes/origin/main')).pr?.state).toBe('MERGED')
 })

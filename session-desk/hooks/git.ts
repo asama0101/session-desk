@@ -18,7 +18,7 @@ import { stripControl } from './lib'
 
 type RunResult = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
 export type Run = (argv: string[]) => Promise<RunResult>
-export type Problem = 'not-repo' | 'no-commit' | 'unsafe-owner' | 'timeout' | null
+export type Problem = 'not-repo' | 'no-commit' | 'unsafe-owner' | 'timeout' | 'git-failed' | null
 
 export type Snapshot = {
   cwd: string
@@ -92,6 +92,13 @@ function sameOrOther(prs: readonly Pr[], tip: string): Map<number, Relation> {
   return new Map(prs.filter(p => p.state !== 'OPEN').map(p => [p.number, p.headRefOid === tip ? 'same' : 'other'] as const))
 }
 
+// PR の先頭が、基準（origin の既定ブランチ）に入っているか。入っていれば、merge commit でマージされている。
+async function isInBase(run: Run, oid: string, baseRef: string): Promise<boolean> {
+  const r = await git(run, 'merge-base', '--is-ancestor', oid, baseRef)
+
+  return !r.rejected && r.exitCode === 0
+}
+
 async function ancestry(run: Run, ref: string, oid: string): Promise<Relation> {
   const r = await git(run, 'merge-base', '--is-ancestor', ref, oid)
   if (r.rejected) {
@@ -131,7 +138,10 @@ export async function collect(
   if (refsRes.isStdoutTruncated) {
     return emptySnapshot(opts.cwd, gitAt, null, ['ブランチ一覧が長すぎます'])
   }
-  const rows = refsRes.exitCode === 0 ? parseRefs(refsRes.stdout) : []
+  if (refsRes.exitCode !== 0) {
+    return emptySnapshot(opts.cwd, gitAt, 'git-failed')
+  }
+  const rows = parseRefs(refsRes.stdout)
   const HEADS = 'refs/heads/'
   const ORIGIN = 'refs/remotes/origin/'
   const locals = rows.filter(r => r.ref.startsWith(HEADS))
@@ -233,7 +243,13 @@ export async function collect(
     const relation = sameOrOther(own, tip)
     const candidate = newestClosed(own)
     if (candidate !== undefined && !own.some(p => p.state === 'OPEN') && relation.get(candidate.number) !== 'same') {
-      relation.set(candidate.number, spend() ? await ancestry(run, ref, candidate.headRefOid) : 'unknown')
+      let found = spend() ? await ancestry(run, ref, candidate.headRefOid) : 'unknown'
+      // 自分の commit がないブランチ（古い main から切り直した直後）は、同名の古い PR の元にはなれない。
+      // ただし、PR の先頭が基準に入っている（merge commit でマージ済み）ときは、そのまま採る。
+      if (found === 'ancestor' && ahead === 0 && baseRef !== null && spend() && !(await isInBase(run, candidate.headRefOid, baseRef))) {
+        found = 'other'
+      }
+      relation.set(candidate.number, found)
     }
     const adopted = prs === null ? { pr: null, known: false } : adoptPr(own, p => relation.get(p.number) ?? 'other')
     const prKnown = adopted.known && !(prCapped && adopted.pr === null)
@@ -281,7 +297,13 @@ export function applyDetail(row: BranchRow, d: Detail): BranchRow {
 }
 
 // PR の一覧が上限に達したときに、選択中のブランチだけを引き直す。
-export async function requeryPr(run: Run, name: string, tip: string): Promise<{ pr: Pr | null; known: boolean }> {
+export async function requeryPr(
+  run: Run,
+  name: string,
+  tip: string,
+  ahead: number | null,
+  baseRef: string | null,
+): Promise<{ pr: Pr | null; known: boolean }> {
   const g = await safe(run, ['gh', 'pr', 'list', '--state', 'all', '--head', name, '--json', PR_FIELDS])
   const prs = usable(g) ? parsePrList(g.stdout) : null
   if (prs === null) {
@@ -291,10 +313,20 @@ export async function requeryPr(run: Run, name: string, tip: string): Promise<{ 
   const relation = sameOrOther(own, tip)
   const candidate = newestClosed(own)
   if (candidate !== undefined && !own.some(p => p.state === 'OPEN') && relation.get(candidate.number) !== 'same') {
-    relation.set(candidate.number, await ancestry(run, `refs/heads/${name}`, candidate.headRefOid))
+    let found = await ancestry(run, `refs/heads/${name}`, candidate.headRefOid)
+    if (found === 'ancestor' && ahead === 0 && baseRef !== null && !(await isInBase(run, candidate.headRefOid, baseRef))) {
+      found = 'other'
+    }
+    relation.set(candidate.number, found)
   }
 
   return adoptPr(own, p => relation.get(p.number) ?? 'other')
+}
+
+// 画面の snapshot が、作り直しの元にした snapshot のままなら新しいほうに替える。
+// 取得の途中で別の更新が入っていたら、画面のほうを残す（古い結果で上書きしない）。
+export function replaceIfSame(cur: Snapshot | null, base: Snapshot, next: Snapshot): Snapshot | null {
+  return cur !== null && cur.cwd === base.cwd && cur.gitAt === base.gitAt ? next : cur
 }
 
 // 選んだブランチだけ、日時を取り、PR の一覧が上限に達していたときは PR を引き直す。
@@ -307,7 +339,7 @@ export async function enrich(run: Run, snap: Snapshot, name: string): Promise<Sn
   if (snap.prCapped && next.facts.pr === null && snap.ghAt !== null) {
     const tip = await git(run, 'rev-parse', '--verify', `refs/heads/${name}`)
     if (usable(tip)) {
-      const found = await requeryPr(run, name, tip.stdout.trim())
+      const found = await requeryPr(run, name, tip.stdout.trim(), next.facts.ahead, snap.baseRef)
       next = buildRow(next.name, next.kind, next.isCurrent, { ...next.facts, pr: found.pr, prKnown: found.known })
     }
   }
