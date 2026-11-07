@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, CATEGORY_COLORS, formatDuration, formatTokens, usageColor } from './band'
+import { barCells, CATEGORY_COLORS, formatDuration, formatTokens, isRiskyStep, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -14,10 +14,9 @@ export type BandArgs = {
   model: string | null
   context: { percent: number; tokens: number | null; window: number | null; parts: { id: CategoryId; tokens: number }[] } | null
   breakdown: {
-    open: boolean
     // 「正確に数える」の結果を出しているとき真（「概算」の代わりに「正確」と出す）。
     exact: boolean
-    rows: { id: CategoryId; name: string; tokens: number; percent: number; detail: { name: string; tokens: number }[] | null; detailOpen: boolean }[]
+    rows: { id: CategoryId; name: string; tokens: number; detail: { name: string; tokens: number }[] | null; detailOpen: boolean }[]
     compactIn: number | null
     threshold: number | null
   } | null
@@ -25,7 +24,6 @@ export type BandArgs = {
   git: { branch: string | null; dirtyCount: number | null } | null
   steps: { items: string[]; reason: string; confirming: number | null } | null
   on: {
-    toggleBreakdown(): void
     toggleAgents(): void
     exact(): void
     toggleDetail(id: CategoryId): void
@@ -38,10 +36,10 @@ export type BandArgs = {
 }
 
 const NARROW_COLUMNS = 40
-const BAR_WIDTH = 16
-const BAR_WIDTH_NARROW = 8
-const BREAKDOWN_BAR_WIDTH = 32
-const BREAKDOWN_BAR_WIDTH_NARROW = 16
+const BAR_WIDTH = 24
+const BAR_WIDTH_NARROW = 12
+// 枠の中の区切り線の既定の長さ（columns が分からないとき）。
+const RULE_WIDTH = 36
 
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
 const AGENT_MARK = {
@@ -53,10 +51,10 @@ const AGENT_MARK = {
 export function renderBand(ui: Ui, a: BandArgs) {
   const { Box, Text, Button } = ui
   const clean = stripControl
-  const pct = (percent: number) => {
+  const pct = (percent: number, bold = false) => {
     const level = usageColor(percent)
 
-    return level === 'normal' ? <Text>{`${percent}%`}</Text> : <Text color={level}>{`${percent}%`}</Text>
+    return level === 'normal' ? <Text bold={bold}>{`${percent}%`}</Text> : <Text bold={bold} color={level}>{`${percent}%`}</Text>
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
   const bar = (parts: { id: CategoryId; tokens: number }[], percent: number, width: number) => (
@@ -108,65 +106,63 @@ export function renderBand(ui: Ui, a: BandArgs) {
     ) : null
 
   const ctx = a.context
-  const contextLine = ctx !== null && (
-    <Box gap={2} flexWrap="wrap">
-      <Text dimColor>コンテキスト</Text>
-      {bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BAR_WIDTH)}
-      {pct(ctx.percent)}
-      {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
-    </Box>
-  )
-
   const bd = a.breakdown
-  const breakdown = bd !== null && (
-    <Box flexDirection="column">
-      <Button key="band-breakdown" plain label={bd.open ? '▾ 内訳' : '▸ 内訳'} onPress={() => a.on.toggleBreakdown()}>
-        <Text dimColor>{bd.open ? '▾ 内訳' : '▸ 内訳'}</Text>
-      </Button>
-      {bd.open && (
-        <Box flexDirection="column">
-          {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BREAKDOWN_BAR_WIDTH_NARROW : BREAKDOWN_BAR_WIDTH)}
-          {bd.rows.map(row => (
-            <Box key={`bd-${row.id}`} flexDirection="column">
-              <Box gap={2} flexWrap="wrap">
-                <Text color={CATEGORY_COLORS[row.id]}>■</Text>
-                <Text>{clean(row.name)}</Text>
-                <Text>{formatTokens(row.tokens)}</Text>
-                <Text>{`${row.percent}%`}</Text>
-                {row.detail !== null && (
-                  <Button key={`band-detail-${row.id}`} plain label={row.detailOpen ? '▾ 1 件ずつ' : '▸ 1 件ずつ'} onPress={() => a.on.toggleDetail(row.id)}>
-                    <Text dimColor>{row.detailOpen ? '▾ 1 件ずつ' : '▸ 1 件ずつ'}</Text>
-                  </Button>
-                )}
-              </Box>
-              {row.detail !== null &&
+  const contextBlock =
+    ctx === null && bd === null ? null : (
+      <Box flexDirection="column">
+        {ctx !== null && (
+          <Box gap={2} flexWrap="wrap">
+            <Text dimColor>コンテキスト</Text>
+            {pct(ctx.percent, true)}
+            {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
+          </Box>
+        )}
+        {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BAR_WIDTH)}
+        {bd !== null && (
+          <Box flexDirection="column">
+            <Box columnGap={2} flexWrap="wrap">
+              {bd.rows.map(row => (
+                <Box key={`bd-${row.id}`} gap={1}>
+                  <Text color={CATEGORY_COLORS[row.id]}>■</Text>
+                  <Text>{clean(row.name)}</Text>
+                  <Text>{formatTokens(row.tokens)}</Text>
+                  {row.detail !== null && (
+                    <Button key={`band-detail-${row.id}`} plain label={row.detailOpen ? '▾ 1 件ずつ' : '▸ 1 件ずつ'} onPress={() => a.on.toggleDetail(row.id)}>
+                      <Text dimColor>{row.detailOpen ? '▾ 1 件ずつ' : '▸ 1 件ずつ'}</Text>
+                    </Button>
+                  )}
+                </Box>
+              ))}
+            </Box>
+            {bd.rows.map(
+              row =>
+                row.detail !== null &&
                 row.detailOpen &&
                 row.detail.map((d, i) => (
                   <Box key={`bd-${row.id}-${i}`} gap={2}>
-                    <Text dimColor>{'  '}</Text>
+                    <Text color={CATEGORY_COLORS[row.id]}>{'  ■'}</Text>
                     <Text>{clean(d.name)}</Text>
                     <Text>{formatTokens(d.tokens)}</Text>
                   </Box>
-                ))}
+                )),
+            )}
+            <Box gap={2} flexWrap="wrap">
+              {bd.compactIn !== null && (
+                <Text dimColor>
+                  {bd.threshold === null
+                    ? `自動 compact まで あと ${formatTokens(bd.compactIn)}`
+                    : `自動 compact まで あと ${formatTokens(bd.compactIn)}（閾値 ${formatTokens(bd.threshold)}）`}
+                </Text>
+              )}
+              <Text dimColor>{bd.exact ? '正確' : '概算'}</Text>
+              <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
+                <Text color="suggestion">正確に数える</Text>
+              </Button>
             </Box>
-          ))}
-          {bd.compactIn !== null && (
-            <Text dimColor>
-              {bd.threshold === null
-                ? `自動 compact まで あと ${formatTokens(bd.compactIn)}`
-                : `自動 compact まで あと ${formatTokens(bd.compactIn)}（閾値 ${formatTokens(bd.threshold)}）`}
-            </Text>
-          )}
-          <Box gap={2} flexWrap="wrap">
-            <Text dimColor>{bd.exact ? '正確' : '概算'}</Text>
-            <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
-              <Text color="suggestion">正確に数える</Text>
-            </Button>
           </Box>
-        </Box>
-      )}
-    </Box>
-  )
+        )}
+      </Box>
+    )
 
   const limits =
     a.limits.length > 0 ? (
@@ -190,52 +186,90 @@ export function renderBand(ui: Ui, a: BandArgs) {
     ) : null
 
   const st = a.steps
-  const steps = st !== null && (
-    <Box flexDirection="column">
-      {st.confirming === null && (
+  const steps =
+    st === null ? null : st.confirming !== null ? (
+      <Box flexDirection="column" borderStyle="round" borderColor="error" paddingX={1}>
+        <Text color="error" bold>
+          本当に送りますか？
+        </Text>
+        <Text>{clean(st.items[st.confirming] ?? '')}</Text>
+        <Box gap={2}>
+          <Button key={`band-step-confirm-${st.confirming}`} plain label="送る" onPress={() => a.on.confirm(st.confirming as number)}>
+            <Text color="success">送る</Text>
+          </Button>
+          <Button key="band-step-cancel" plain label="やめる" onPress={() => a.on.cancel()}>
+            <Text>やめる</Text>
+          </Button>
+        </Box>
+      </Box>
+    ) : (
+      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
         <Box gap={2} flexWrap="wrap">
           <Text bold>提案</Text>
           <Text>{clean(st.reason)}</Text>
         </Box>
-      )}
-      {st.items.map((item, i) => {
-        const text = clean(item)
+        {st.items.map((item, i) => {
+          const text = clean(item)
+          const risky = isRiskyStep(item)
 
-        return st.confirming === i ? (
-          <Box key={`step-confirming-${i}`} gap={2} flexWrap="wrap">
-            <Text color="error">本当に送りますか？</Text>
-            <Text>{text}</Text>
-            <Button key={`band-step-confirm-${i}`} plain label="送る" onPress={() => a.on.confirm(i)}>
-              <Text color="success">送る</Text>
+          return (
+            <Button key={`band-step-${i}`} plain label={text} onPress={() => a.on.pick(i)}>
+              <Text dimColor>{`${i + 1}  `}</Text>
+              <Text color={risky ? 'warning' : 'suggestion'}>{text}</Text>
+              {risky && <Text color="warning">{'  ⚠ 2 回押す'}</Text>}
             </Button>
-            <Button key="band-step-cancel" plain label="やめる" onPress={() => a.on.cancel()}>
-              <Text>やめる</Text>
-            </Button>
+          )
+        })}
+      </Box>
+    )
+
+  // 枠の中は、状態・コンテキスト・利用枠とブランチの 3 段。値のある段だけを、点線で区切って並べる。
+  const rule = <Text dimColor>{'┄'.repeat(Math.max(8, (a.columns ?? RULE_WIDTH + 4) - 4))}</Text>
+  const top = a.goal !== null || runLine !== null || agents !== null
+  const foot = limits !== null || git !== null
+  const sections: [string, boolean, any][] = [
+    [
+      'top',
+      top,
+      <Box flexDirection="column">
+        {a.goal !== null && (
+          <Box gap={2} flexWrap="wrap">
+            <Text dimColor>ゴール</Text>
+            <Text>{clean(a.goal)}</Text>
           </Box>
-        ) : (
-          <Button key={`band-step-${i}`} plain label={text} onPress={() => a.on.pick(i)}>
-            <Text color="suggestion">{text}</Text>
-          </Button>
-        )
-      })}
-    </Box>
-  )
+        )}
+        {runLine}
+        {agents}
+      </Box>,
+    ],
+    ['context', contextBlock !== null, contextBlock],
+    [
+      'foot',
+      foot,
+      <Box flexDirection="column">
+        {limits}
+        {git}
+      </Box>,
+    ],
+  ]
+  const shown = sections.filter(([, on]) => on)
 
   return (
     <Box flexDirection="column">
-      {a.goal !== null && (
-        <Box gap={2} flexWrap="wrap">
-          <Text dimColor>ゴール</Text>
-          <Text>{clean(a.goal)}</Text>
+      {(a.model !== null || shown.length > 0) && (
+        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+          <Box gap={2}>
+            <Text bold>Session</Text>
+            {a.model !== null && <Text>{clean(a.model)}</Text>}
+          </Box>
+          {shown.map(([key, , node], n) => (
+            <Box key={`sec-${key}`} flexDirection="column">
+              {n > 0 && rule}
+              {node}
+            </Box>
+          ))}
         </Box>
       )}
-      {runLine}
-      {agents}
-      {a.model !== null && <Text>{clean(a.model)}</Text>}
-      {contextLine}
-      {breakdown}
-      {limits}
-      {git}
       {steps}
     </Box>
   )

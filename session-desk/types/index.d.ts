@@ -42,7 +42,7 @@ declare module 'claude-code' {
         open: boolean
         startedAt: Record<string, number>
       }
-      bandUi: { breakdown: boolean; exact: boolean; detail: string[] }
+      bandUi: { exact: boolean; detail: string[] }
       branchSel: string | null
       branchAct: { dismissed: string[]; confirm: string | null }
     }

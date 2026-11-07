@@ -168,6 +168,22 @@ test('the band is drawn above every tab', async ($, on) => {
   await ui.unmount()
 })
 
+test('the tab row sits below the band and above the tab body', async ($, on) => {
+  engine(on)
+  await start($)
+  await settle()
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await ui.press({ key: 'tab-quick' })
+  await settle()
+  const flat = JSON.stringify(await ui.drawn())
+  const at = (w: string) => flat.indexOf(w)
+  expect(at('Session')).toBeGreaterThan(-1)
+  expect(at('Session')).toBeLessThan(at('tab-quick'))
+  expect(at('tab-quick')).toBeLessThan(at('残りのタスクは？'))
+  await ui.unmount()
+})
+
 // ---- Task 8: モデル・コンテキスト・上限・サブエージェント ----
 
 const ZERO_USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' }
@@ -476,31 +492,18 @@ function withBreakdown(over: object = {}, categories?: any[]) {
   }
 }
 
-test('pressing 内訳 opens the rows with 概算 and pressing again closes them', async ($, on) => {
+test('the breakdown rows and 概算 are always drawn, with no 内訳 button', async ($, on) => {
   engine(on)
   fakeData(on, { usage: withBreakdown() })
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  let t = await draw(ui)
-  expect(await labels(ui)).toContain('▸ 内訳')
-  expect(t).not.toContain('概算')
-  expect(t).not.toContain('メッセージ')
-  await ui.press({ key: 'band-breakdown' })
-  await settle()
-  t = await draw(ui)
-  expect(await labels(ui)).toContain('▾ 内訳')
+  const t = await draw(ui)
+  expect(await labels(ui)).not.toContain('▸ 内訳')
   expect(t).toContain('メッセージ')
   expect(t).toContain('500k')
-  expect(t).toContain('50%')
   expect(t).toContain('概算')
-  await ui.press({ key: 'band-breakdown' })
-  await settle()
-  t = await draw(ui)
-  expect(await labels(ui)).toContain('▸ 内訳')
-  expect(t).not.toContain('概算')
-  expect(t).not.toContain('メッセージ')
   await ui.unmount()
 })
 
@@ -524,7 +527,6 @@ test('rows are sorted by tokens, buffer and unknown names fold into その他, �
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   const t = await draw(ui)
   const names = ['メッセージ', 'MCP ツール', 'その他', 'システムプロンプト', '空き']
@@ -533,9 +535,7 @@ test('rows are sorted by tokens, buffer and unknown names fold into その他, �
   expect([...at].sort((a, b) => a - b)).toEqual(at)
   // その他 = 未知の名前 60k + buffer 100k
   expect(t[t.indexOf('その他') + 1]).toBe('160k')
-  expect(t[t.indexOf('その他') + 2]).toBe('16%')
   expect(t[t.indexOf('空き') + 1]).toBe('40k')
-  expect(t[t.indexOf('空き') + 2]).toBe('4%')
   await ui.unmount()
 })
 
@@ -546,7 +546,6 @@ test('the compact line counts the used categories: 860k used, 900k threshold giv
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   expect(await draw(ui)).toContain('自動 compact まで あと 40k（閾値 900k）')
   await ui.unmount()
@@ -559,7 +558,6 @@ test('auto compact disabled: no compact line', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   const t = await draw(ui)
   expect(t).toContain('概算')
@@ -574,7 +572,6 @@ test('no threshold: no compact line', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   const t = await draw(ui)
   expect(t).toContain('概算')
@@ -589,7 +586,6 @@ test('正確に数える makes exactly one full call; the next fetch is summary 
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   data.calls.length = 0
   await ui.press({ key: 'band-exact' })
@@ -617,7 +613,6 @@ test('a failing full call shows a toast, keeps 概算, and later fetches are sum
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   calls.length = 0
   await ui.press({ key: 'band-exact' })
@@ -642,7 +637,6 @@ test('the ▸ of MCP, memory and skills rows shows each item, biggest first, and
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
   let t = await draw(ui)
   expect(t).not.toContain('srv / big')
@@ -748,7 +742,6 @@ async function openBreakdown($: any) {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
-  await ui.press({ key: 'band-breakdown' })
   await settle()
 
   return ui
