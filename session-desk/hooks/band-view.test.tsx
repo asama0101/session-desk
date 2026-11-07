@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { BandArgs } from './band-view'
-import { BRANCH_COLOR, DARK_TEXT, FACE, modelColor } from './band'
+import { BRANCH_COLOR, modelColor } from './band'
 import { renderBand } from './band-view'
 import { ESC, labelsOf, textsOf } from './test-kit'
 
@@ -59,8 +59,7 @@ test('goal shows when set and nothing when null', async () => {
 
 test('running shows the tool and elapsed as separate texts', async () => {
   const t = texts({ run: { state: 'running', tool: 'Bash', elapsedMs: 42_000 } })
-  expect(t).toContain('実行中')
-  expect(t).toContain('Bash')
+  expect(t).toContain('実行中 Bash')
   expect(t).toContain('0m42s')
 })
 
@@ -171,14 +170,14 @@ test('an exact breakdown says 正確 instead of 概算, and the button stays', a
   expect(labelsOf(exact)).toContain('正確に数える')
 })
 
-test('the context bar fills the face: columns - 2 cells (min 8), 24 when columns is unknown', async () => {
+test('the context bar fills the frame: columns - 4 cells (min 8), 24 when columns is unknown', async () => {
   const cells = (tree: Node) =>
     find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).reduce(
       (sum, n) => sum + (n.children[0] as string).length,
       0,
     )
   expect(cells(draw({ context: CTX(86) }))).toBe(24)
-  expect(cells(draw({ context: CTX(86), columns: 60 }))).toBe(58)
+  expect(cells(draw({ context: CTX(86), columns: 60 }))).toBe(56)
   expect(cells(draw({ context: CTX(86), columns: 6 }))).toBe(8)
 })
 
@@ -203,32 +202,40 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
   expect(find(narrow, n => n.type === 'Text' && n.children[0] === '█'.repeat(3))).toHaveLength(1)
 })
 
-test('the branch name is bright cyan; the header face takes the colour of the model family', async () => {
+test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
   expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), 'main')).toBe(BRANCH_COLOR)
-  const head = (name: string | null) => find(draw({ model: name, context: CTX(50) }), n => n.props?.backgroundColor !== undefined)[0]
-  expect(head('Opus 5.5').props.backgroundColor).toBe(modelColor('opus'))
-  expect(head('Sonnet 5.5').props.backgroundColor).toBe(modelColor('sonnet'))
-  expect(head('x').props.backgroundColor).toBe(BRANCH_COLOR)
-  // 見出しの字は、色のついた面に載る濃い字。
-  expect(textsOf(head('Opus 5.5'))).toEqual(['Session', 'Opus 5.5'])
-  expect(find(head('Opus 5.5'), n => n.type === 'Text').every(n => n.props.color === DARK_TEXT && n.props.bold === true)).toBe(true)
-  // モデルが分からなくても、見出しは出る（灰色の面）。
-  expect(textsOf(head(null))).toEqual(['Session'])
+  const model = (name: string) => find(draw({ model: name }), n => n.type === 'Text' && n.children[0] === name)[0]
+  expect(model('Opus 5.5').props.color).toBe(modelColor('opus'))
+  expect(model('Opus 5.5').props.bold).toBe(true)
+  expect(model('Sonnet 5.5').props.color).toBe(modelColor('sonnet'))
+  expect(model('x').props.color).toBe(BRANCH_COLOR)
 })
 
-test('sections are faces (background colour), not frames: no borders, no rules; empty sections are left out', async () => {
-  const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 } })
-  expect(find(tree, n => n.props?.borderStyle !== undefined)).toHaveLength(0)
-  expect(textsOf(tree).filter(x => /^┄+$/.test(x))).toHaveLength(0)
-  const faces = find(tree, n => n.props?.backgroundColor === FACE)
-  expect(faces).toHaveLength(3)
-  expect(find(draw({ context: CTX(50) }), n => n.props?.backgroundColor === FACE)).toHaveLength(1)
-  expect(find(draw(), n => n.props?.backgroundColor !== undefined)).toHaveLength(0)
+test('the whole panel is one double-line frame headed Session + model; sections are split by thin rules, the suggestion by a double rule', async () => {
+  const steps = { items: ['a', 'b'], reason: 'R', recommended: null }
+  const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 }, steps, between: { type: 'Text', props: {}, children: ['TABS'] } as any })
+  const frames = find(tree, n => n.props?.borderStyle !== undefined)
+  expect(frames).toHaveLength(1)
+  expect(frames[0].props.borderStyle).toBe('double')
+  expect(textsOf(frames[0]).slice(0, 2)).toEqual(['Session', 'Opus 5.5'])
+  // 状態・コンテキスト・利用枠とブランチ・タブの各段の前に細い線、提案の前に二重線。
+  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(4)
+  expect(textsOf(tree).filter(x => /^═+$/.test(x))).toHaveLength(1)
+  const flat = JSON.stringify(tree)
+  expect(flat.indexOf('═')).toBeGreaterThan(flat.indexOf('TABS'))
+  expect(flat.indexOf('提案')).toBeGreaterThan(flat.indexOf('═'))
+  // 値のない段は出さない。コンテキストだけなら、見出しの下の線は 1 本。
+  expect(textsOf(draw({ context: CTX(50) })).filter(x => /^─+$/.test(x))).toHaveLength(1)
+  // 何もなければ、枠も出ない。
+  expect(find(draw(), n => n.props?.borderStyle !== undefined)).toHaveLength(0)
 })
 
-test('the status chip keeps its word as the only text; running puts the tool next to it', async () => {
-  const stopped = draw({ run: { state: 'stopped', tool: null, elapsedMs: null } })
-  expect(find(stopped, n => n.props?.backgroundColor === '#8a8f9c').some(n => textsOf(n).join('') === '停止中')).toBe(true)
+test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
+  const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
+  const gaps = find(tree, n => n.props?.marginTop === 1)
+  expect(gaps).toHaveLength(2)
+  expect(textsOf(gaps[0])).toContain('Messages')
+  expect(textsOf(gaps[1])).toContain('概算')
 })
 
 test('detail closed hides the per-item rows', async () => {
@@ -246,7 +253,7 @@ test('steps: framed list with numbers, (推奨) on the recommended row only, nul
   expect(textsOf(pick).join('|')).toContain('理由R')
   // 番号と推奨の印は、ボタンの中の Text。
   const inside = find(pick, n => n.type === 'Text').flatMap(n => n.children.filter(c => typeof c === 'string') as string[])
-  expect(inside).toEqual(expect.arrayContaining([' 1 ', ' 2 ']))
+  expect(inside).toEqual(expect.arrayContaining(['1  ', '2  ']))
   expect(inside.filter(x => x === ' (推奨)')).toHaveLength(1)
   const row = (i: number) => byKey(pick, `band-step-${i}`)
   expect(JSON.stringify(row(1))).toContain('(推奨)')

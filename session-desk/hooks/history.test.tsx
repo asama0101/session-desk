@@ -132,10 +132,9 @@ test('the panel opens on 定型文; the selected tab is marked with ▸ and draw
   const tab = async (key: string) => JSON.stringify(await ui.find({ key }))
   expect(await tab('tab-quick')).toContain('"label":"▸ 定型文"')
   expect(await tab('tab-quick')).not.toContain('"dimColor":true')
-  // 選択中のタブは、水色の面に濃い太字。選んでいないタブは、灰色の面。
-  expect(await tab('tab-quick')).toContain('"backgroundColor":"#4fd6e0"')
+  // 選択中のタブは、▸ がアクセント色で、名前が太字。
+  expect(await tab('tab-quick')).toContain('"color":"suggestion"')
   expect(await tab('tab-quick')).toContain('"bold":true')
-  expect(await tab('tab-history')).toContain('"backgroundColor":"#2c2f36"')
   expect(await tab('tab-history')).toContain('"label":"履歴"')
   expect(await tab('tab-history')).toContain('"dimColor":true')
   expect(await ui.find({ key: 'tab-changes' })).toBeUndefined()
@@ -159,11 +158,16 @@ test('the tabs are in the order 定型文, 履歴', async ($, on) => {
 test('one blank row separates the tabs from the body, on both tabs', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const root = async () => (await ui.drawn()) as { props?: { flexDirection?: string; gap?: number } }
-  // 定型文タブ（初期表示）と、履歴タブの両方で、全体は縦並びで、タブと本文の間に 1 行（gap 1）がある。
-  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  // タブの行と本文は同じ縦並びの Box にあり、本文は 1 行（marginTop 1）あけて置かれる。
+  const gap = async () => {
+    const tabs = ancestorsOf(await ui.drawn(), 'tab-quick').at(-1) as { props?: { flexDirection?: string }; children?: { props?: { marginTop?: number } }[] }
+    const column = ancestorsOf(await ui.drawn(), 'tab-quick').at(-2) as { props?: { flexDirection?: string }; children?: { props?: { marginTop?: number } }[] }
+    expect(tabs).toBeDefined()
+    return column.props?.flexDirection === 'column' && column.children?.some(c => c.props?.marginTop === 1)
+  }
+  expect(await gap()).toBe(true)
   await ui.press({ key: 'tab-history' })
-  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  expect(await gap()).toBe(true)
   await ui.unmount()
 })
 

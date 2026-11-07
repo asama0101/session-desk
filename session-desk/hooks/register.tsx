@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, compactIn, DARK_TEXT, FACE, FACE_HI, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, TAB_ON, toolLabel } from './band'
+import { addTool, classifyCategory, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
@@ -834,7 +834,7 @@ export const register: Register = on => {
     }
 
     return (
-      <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column">
         {renderBand({ Box, Text, Button }, {
           goal: b.goal,
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
@@ -849,24 +849,22 @@ export const register: Register = on => {
           // 実行中は選択肢を描かない。
           steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, recommended: b.recommended },
           on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
+          between: <Box flexDirection="column">
+              <Box gap={2}>
+                {TABS.map(item =>
+                  current === item.id ? (
+                    <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
+                      <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
+                    </Button>
+                  ) : (
+                    <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
+                  ),
+                )}
+              </Box>
+              <Box marginTop={1}>{body}</Box>
+            </Box>,
           columns: e.props.bodyColumns,
         })}
-        <Box gap={1}>
-          {TABS.map(item =>
-            current === item.id ? (
-              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
-                <Text bold color={DARK_TEXT} backgroundColor={TAB_ON}>{` ${item.label} `}</Text>
-              </Button>
-            ) : (
-              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)}>
-                <Text backgroundColor={FACE_HI}>{` ${item.label} `}</Text>
-              </Button>
-            ),
-          )}
-        </Box>
-        <Box flexDirection="column" backgroundColor={FACE} paddingX={1}>
-          {body}
-        </Box>
       </Box>
     )
   })

@@ -50,13 +50,6 @@ export function usageColor(percent: number): 'normal' | 'warning' | 'error' {
   return 'normal'
 }
 
-// 面の色（背景色）。段は、枠や線ではなく、この面の違いで分ける。面の上の字は、端末の標準の字色。
-export const FACE = '#23252b'
-export const FACE_HI = '#2c2f36'
-// 色のついた面（見出し・選んだタブ・チップ）に載せる濃い字。
-export const DARK_TEXT = '#14151a'
-export const TAB_ON = '#4fd6e0'
-export const ACCENT = '#b1b9f9'
 // 押せない操作の薄い字。
 export const OFF_COLOR = '#555a65'
 
