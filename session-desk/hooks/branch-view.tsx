@@ -114,6 +114,8 @@ type Args = {
   more: { open: boolean; onToggle(): void }
   // 「次へ進む」ボタンを押したとき。
   onNext(next: Next): void
+  // Claude が動いている間は真。ボタンは押せない（質問や許可の待ちと、依頼が衝突しないように）。
+  busy: boolean
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -186,13 +188,15 @@ export function renderBranchTab(ui: Ui, a: Args) {
                   </Text>
                 </Box>
                 {date !== '' && <Text dimColor>{date}</Text>}
-                {isNow && next !== null && (
+                {isNow && next !== null && (a.busy ? (
+                  <Text dimColor>{next.label}</Text>
+                ) : (
                   <Button key="git-next" plain label={next.label} onPress={() => a.onNext(next)}>
                     <Text bold color="suggestion">
                       {next.label}
                     </Text>
                   </Button>
-                )}
+                ))}
               </Box>
             )
           })}

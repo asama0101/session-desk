@@ -429,6 +429,7 @@ test('a token in a remote URL never reaches the screen', async () => {
     onSelect() {},
     more: { open: false, onToggle() {} },
     onNext() {},
+    busy: false,
   })
   expect(JSON.stringify(tree)).not.toContain('tok123')
 })
@@ -462,6 +463,7 @@ test('git: a long branch list shows 5 rows; the current and chosen branch stay i
         onSelect() {},
         more: { open: over.open, onToggle() {} },
         onNext() {},
+    busy: false,
       }),
     )
   const rowsIn = (json: string) => [...json.matchAll(/"key":"branch-(b\d+)"/g)].map(m => m[1])
@@ -494,7 +496,7 @@ test('next button: the current branch gets a button on its 今 row; pressing it 
 })
 
 test('next button: editing offers commit', async ($, on) => {
-  const e = engine(on, { status: ' M x ' })
+  const e = engine(on, { status: ' M x\0' })
   await start($)
   const ui = await open($, e.calls)
   expect(JSON.stringify(await ui.find({ key: 'git-next' }))).toContain('▶ commit する')
@@ -511,5 +513,26 @@ test('next button: a branch that is not the current one has no button', async ($
   await ui.press({ key: 'branch-docs/b' })
   await flush()
   expect(await ui.find({ key: 'git-next' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('next button: while Claude is working it is a dim label that cannot be pressed (a pending question must not collide with the request)', async ($, on) => {
+  const e = engine(on)
+  on('turn.start', (_: any, ev: any) => ({ turnId: ev.turnId }))
+  on('turn.complete', (_: any, ev: any) => ({ text: ev.answer }))
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await ui.find({ key: 'git-next' })).toBeDefined()
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '▶ push する' })).toBeDefined()
+  await $.turn.complete({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await flush()
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeDefined()
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
   await ui.unmount()
 })

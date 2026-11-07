@@ -482,8 +482,9 @@ async function pickStep($: any, i: number) {
 // Git タブの「次へ進む」を押す。同じ状態（key が同じ）での二度押しは、送らない。Claude が止まったら、また押せる。
 let nextSentKey: string | null = null
 
-function pressNext($: any, next: Next) {
-  if (nextSentKey === next.key) {
+async function pressNext($: any, next: Next) {
+  // Claude が動いている間は送らない。質問や許可の待ちに依頼が割り込んで、答えが衝突するため。画面の押下が古いこともあるので、ここでも見る。
+  if ((await read($, band)).state === 'running' || nextSentKey === next.key) {
     return
   }
   nextSentKey = next.key
@@ -747,6 +748,7 @@ export const register: Register = on => {
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
           onNext: next => void pressNext($, next),
+          busy: b.state === 'running',
         },
       )
     } else {
