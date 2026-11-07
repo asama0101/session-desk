@@ -204,16 +204,86 @@ Session Desk の全タブの最上部に「セッション帯」を足す。帯�
 | 経過秒の更新 | 10 秒刻み |
 | fork が使えなかったとき | ゴールと選択肢を除いて、帯だけを作る（帯は fork に依存しない） |
 
+
 ## 9. 未検証のこと（ビルダーが最初に確かめる）
 
-| 確かめること | 外れたときの扱い |
-|---|---|
-| `$.model.fork` の呼び方と、返り値の形。`turn.complete` の `next(e)` を返したあとに、await せずに呼べること | 4.4 の方式が成立しない。ゴールと選択肢を除いて帯だけを作り、作者に報告する |
-| `$.model.fork` 自身が `turn.start`・`turn.complete`・`tool.call` を起こして、帯が連鎖して更新されたり、偽のターンが記録されたりしないこと | 起きるなら、自分の fork が走っている間は、この 3 つのイベントを無視する |
-| `agent.spawn` の `next(e)` の結果から `agentId` が取れること | 経過時間を出さず、種類・内容・状態だけにする |
-| `stripControl` が ESC の列（ANSI・OSC）と双方向制御文字（U+202E など）を落とすこと | 足りなければ `stripControl` を直す |
-| `$.session.usage()` の `rateLimits` の形と、サブスクリプション外での値 | 取れた枠だけ出す |
-| `$.agent.list()` が、動いているサブエージェントを返すこと。`status` の値 | サブエージェントの表示を外す |
-| `turn.start`・`agent.spawn` のイベントの形 | 実行状態・経過時間の取り方を決め直す |
-| 実行中のツール名を `tool.call` から取れること | 「実行中」だけにする |
-| ゴールの揺れ（同じ目的で毎ターン書き換わらないか） | 指示の書き方を直す。直らなければ、ゴールの行だけを外し、作者に報告する |
+確認日: 2026-11-07。環境は Claude Code 2.1.319・Windows 11。「型」は `.claude-plugin/types` に対する `tsc --noEmit`、「実機」は `claude -p --plugin-dir <probe> --debug-file <log>`（ヘッドレス）で `$.ui.log(…, { to: 'debug' })` に出して読んだ結果。ヘッドレスは REPL を持たないため、確かめられない項目がある。それらは「未確認」とし、「外れたときの扱い」を既定として後続のタスクが従う。
+
+| 確かめること | 外れたときの扱い | 確認結果 |
+|---|---|---|
+| `$.model.fork` の呼び方と、返り値の形。`turn.complete` の `next(e)` を返したあとに、await せずに呼べること | 4.4 の方式が成立しない。ゴールと選択肢を除いて帯だけを作り、作者に報告する | **成立**（型・実機）。`$.model.fork({ prompt })` は型に通る。`ModelForkRequest` は `prompt` だけを宣言し、`effort` は型に無い（リテラルで `effort` を書くと TS2353。変数に入れて渡すと通る）。実機は `effort: 'low'` を渡して `{ isAnswered: true, text: 'OK', usage, effort: 'low' }` を返したが、`effort` が効いているかは未確認。`next(e)` のあと `void (async () => { await $.model.fork(…) })()` で呼べた。`isAnswered: false` の `reason` は `api-error`・`empty-reply`・`aborted`・`nothing-to-fork` |
+| `$.model.fork` 自身が `turn.start`・`turn.complete`・`tool.call` を起こして、帯が連鎖して更新されたり、偽のターンが記録されたりしないこと | 起きるなら、自分の fork が走っている間は、この 3 つのイベントを無視する | **起きなかった**（実機、ヘッドレス。fork の約 1.3 秒の間に 3 つとも 0 回）。ただし REPL では未確認のため、既定どおり**自分の fork が走っている間（フラグを立てている間）は 3 つとも無視**する実装にする。無視しても害はない |
+| `agent.spawn` の `next(e)` の結果から `agentId` が取れること | 経過時間を出さず、種類・内容・状態だけにする | **成立**（実機）。`{"model":"claude-sonnet-5-5","agentId":"a3fad9f3dfb285104"}`。型は `agentId?: string`（`deny` の腕では無い）なので、未定義なら経過時間を出さない。サブエージェント自身の `turn.start` は `agent.spawn` の `next(e)` が返る前に起き、`agentId` を持つ（同じ値）。サブエージェントの最後の `tool.call` は `tool: 'SubagentHandback'`（`agentId` つき）。サブエージェントの `turn.complete` も `agentId` つき |
+| `stripControl` が ESC の列（ANSI・OSC）と双方向制御文字（U+202E など）を落とすこと | 足りなければ `stripControl` を直す | **成立**（node で実行）。CSI（`ESC[31m`）、OSC の BEL 終端・ST（`ESC\`）終端、U+202E・U+202A・U+2066・U+2069・U+200F・U+200B は消える。**消えないもの**: U+FEFF（BOM）、U+2028/2029、U+00AD、U+061C。C1 の U+009B は消えるが、後ろの `31m` は文字として残る。画面に出す文字列としては、帯の用途（ゴール・理由・選択肢）では致命的ではないので、直すかは Task 3 以降の判断（直すなら `RANGES` に `[0xfeff, 0xfeff]`・`[0x2028, 0x2029]` を足す） |
+| `$.session.usage()` の `rateLimits` の形と、サブスクリプション外での値 | 取れた枠だけ出す | **形は成立**（型・実機）。`rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]`。実機（サブスクリプションあり）は `[{"kind":"five_hour","percentUsed":36,"resetsAt":"2026-11-07T11:00:00.000Z"},{"kind":"seven_day","percentUsed":38,"resetsAt":"2026-11-09T17:00:00.000Z"}]`。`kind` は `five_hour`・`seven_day`、ゲートウェイでは `spend_limit` もある。**サブスクリプション外の値は未確認**（既定: 空配列なら行ごと出さない。`kind` が 2 つ以外のものは出さない）。`context` はヘッドレスでは `{ window: 1000000 }` だけで、`tokens`・`percent`・`breakdown` が無かった。型は 3 つとも省略可（`tokens?`・`percent?`・`breakdown?`）なので、取れなければ出さない |
+| `$.agent.list()` が、動いているサブエージェントを返すこと。`status` の値 | サブエージェントの表示を外す | **未確認**。ヘッドレスでは `$.agent.list is not available in this mode: no session is bound in this process` で例外になる（REPL 専用）。型は `AgentInfo`（`id`・`type`・`description`・`status`・`parentId?`・`name?` ほか）、`AgentStatus = 'pending' \| 'running' \| 'waiting' \| 'idle' \| 'completed' \| 'failed' \| 'killed'`（4.2 の分類と合う）。既定: 呼び出しを try/catch で包み、例外なら「取れなかった」として一覧を出さない |
+| `turn.start`・`agent.spawn` のイベントの形 | 実行状態・経過時間の取り方を決め直す | **成立**（型・実機）。`turn.start`: 入力 `{ text, turnId, agentId? }`、`next(e)` は `{ turnId }`。`turn.complete`: 入力 `{ answer, durationMs, isAborted, turnId, agentId?, usage?, reason }`（`reason`: `answer`・`aborted`・`refusal`・`error`。`refusal` のときは `refusal: { category, explanation }` も付く）、`usage` は `{ input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, model }` で省略可。`agent.spawn`: 結果は上の行 |
+| 実行中のツール名を `tool.call` から取れること | 「実行中」だけにする | **成立**（実機）。`tool.call` の入力に `tool`（`Bash`・`Agent`・`SubagentHandback`）と、サブエージェントのものには `agentId` がある。**ツール完了のイベントは無い**ため、集合から外す契機は `turn.complete` と `turn.start` に頼る |
+| ゴールの揺れ（同じ目的で毎ターン書き換わらないか） | 指示の書き方を直す。直らなければ、ゴールの行だけを外し、作者に報告する | **未確認**（実装後に実機で見る。Task 11 の手動確認で扱う） |
+
+### 9.1 確かめた結果として、後続のタスクが従うこと
+
+- **fork のイベントは常に無視する**。実機では起きなかったが、REPL では未確認のため、既定に倒す。`turn.start`・`turn.complete`・`tool.call` のフックは、自分の fork が走っている間はフラグを見て素通し（`next(e)` だけ）にする。
+- **`$` を別の関数に渡すには、その関数がファイルの先頭の `function` 宣言（または関数に束縛した `const`）であること**。実機の読み込みで、`const L = ($: any, s: string) => …`（フックの内側の定義）は `$ is passed to "L", which is not a function declared at the top of this file` で**モジュールごと読み込み失敗**した。ファイルの先頭に `function L($: any, …) { … }` と書くと通った。引数に `$` を取る補助関数はすべて先頭の関数宣言にする。
+- **`effort` は型に無い**。`ModelForkRequest` は `{ prompt: string }` だけで、`{ prompt, effort: 'low' }` はオブジェクトリテラルの余剰プロパティとして型エラーになる。実機の `fork` は `effort` を受け取り、結果に `effort: 'low'` を返した。実装では、`const req = { prompt, effort: 'low' as const }` と変数に入れてから `$.model.fork(req)` と渡す（変数なら型に通る）。`effort` が効かなくても動作は変わらず、費用が少し増えるだけ。
+- **`context.breakdown` と `context.percent`・`context.tokens` は取れないことがある**（ヘッドレスでは無かった）。4.2 のとおり、取れなければその部分を出さない。
+- **サブエージェントの判定**: `agentId` が定義されていればサブエージェント。ツール完了のイベントが無いので、「実行中のツール」は `tool.call` で足し、`turn.complete`（主ループ、`agentId` 無し）で空にする。
+
+### 9.2 カテゴリ名の実際の文字列（`classifyCategory` が使う）
+
+`$.session.usage({ breakdown: 'summary' })` の `context.breakdown.categories[].name` は、ヘッドレスでは `breakdown` が返らず、実機ログでは読めなかった。そこで、同梱の `claude.exe`（2.1.319）の中のソースから、`categories` を組み立てる箇所を読んだ。次の文字列が、そのままの綴り・大文字小文字で入る（前後の空白なし）。`kind` は `Free space` が `free`、`Autocompact buffer`・`Compact buffer` が `buffer`、`isDeferred` が真のものが `deferred`、それ以外は `used`。
+
+| `name`（完全一致） | `kind` | 4.3 の分類 |
+|---|---|---|
+| `System prompt` | `used` | システムプロンプト |
+| `System tools` | `used` | システムツール |
+| `MCP tools` | `used` | MCP ツール |
+| `MCP server instructions` | `used` | その他（MCP ツールに入れてもよい。既定は「その他」） |
+| `MCP tools (deferred)` | `deferred` | その他 |
+| `System tools (deferred)` | `deferred` | その他 |
+| `Custom agents` | `used` | その他 |
+| `Memory files` | `used` | メモリファイル |
+| `Skills` | `used` | スキル |
+| `Messages` | `used` | メッセージ |
+| `Autocompact buffer` | `buffer` | その他 |
+| `Compact buffer` | `buffer` | その他（自動 compact が無効のとき） |
+| `Free space` | `free` | 空き |
+
+- 分類は、`kind` が `free` なら「空き」、`buffer`・`deferred` なら「その他」、`used` のときだけ上の `name` の完全一致で 6 つのカテゴリ（メッセージ・MCP ツール・システムツール・システムプロンプト・メモリファイル・スキル）に振り、一致しなければ「その他」にする（名前が変わっても落ちない）。
+- `Slash commands` という行は、2.1.319 のソースには `categories` に無い（`ContextSlashCommands` として別の項目）。4.3 の「スラッシュコマンド」は、`categories` には出ない。
+- 実機（REPL）で `categories` を読んで、この一覧と合うかの確認は未実施。合わなければ「その他」に落ちるだけなので、既定のままで動く。
+
+### 9.3 テストでの差し替えの書き方（`claude-code/testing`）
+
+テストは `test(name, async ($, on) => { … })`。`claude plugin test session-desk` で走る（環境の都合で `tsc` は `setTimeout` 等の既存の型エラーを出すが、実行には影響しない）。
+
+**API の呼び出し（`$.model.fork` など）は `on('<名前>', handler)` で差し替える。ハンドラは `{ value }` を返す。** 名前は呼び出しの名前そのまま（`$.model.fork` なら `'model.fork'`）。ハンドラの第 2 引数 `e` は呼び出しの引数。実行して動作を確認した。
+
+| 呼び出し | `on` の名前 | `e` | 返すもの |
+|---|---|---|---|
+| `$.model.fork(req)` | `'model.fork'` | `{ prompt }` | `{ value: { isAnswered: true, text, usage } }` ／ `{ value: { isAnswered: false, reason: 'nothing-to-fork' } }` |
+| `$.session.usage(args)` | `'session.usage'` | `{ breakdown?, columns? }` | `{ value: { startedAt: 0, context: { window, tokens?, percent?, breakdown? }, rateLimits: [] } }` |
+| `$.session.model()` | `'session.model'` | `{}` | `{ value: 'claude-x' }` |
+| `$.agent.list()` | `'agent.list'` | `{}` | `{ value: [] }`（`AgentInfo[]`） |
+| `$.ui.toast(text)` | `'ui.toast'` | `{ text, timeoutMs? }` | `{ value: undefined }` |
+| `$.session.cwd()` | `'session.cwd'` | `{}` | `{ value: 'D:/p' }`（既存テストと同じ） |
+| `$.prompt.submit(input)` | `'prompt.submit'` | `{ text, origin, … }` | **`{ value }` ではなく、イベントの結果そのもの**: `{ text: e.text }`（拒否は `{ drop: '理由' }`）。`prompt.submit` は呼び出しではなくフックのイベントなので、テストの `on` は一番下のフックになる |
+
+```ts
+const seen: string[] = []
+on('model.fork', (_$, e) => { seen.push(e.prompt); return { value: { isAnswered: true, text: '{"goal":"g","reason":"r","steps":[]}', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } } })
+on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200000 }, rateLimits: [] } }))
+on('prompt.submit', (_$, e) => { seen.push('submit:' + e.text); return { text: e.text } })
+```
+
+**イベント（`turn.start`・`turn.complete` など）は、テストの `$` から `await $.turn.complete({ … })` のように起こす。** mod のフックが上に乗って走り、一番下はテストの `on` が受ける。一番下のフックは、イベントの結果を返す（`{ value }` ではない）。
+
+| 起こすもの | 呼び方 | 一番下のフックが返すもの |
+|---|---|---|
+| `turn.complete` | `await $.turn.complete({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })`（`agentId` を足すとサブエージェント） | `on('turn.complete', (_$, e) => ({ text: e.answer }))`。実行して確認した |
+| `turn.start` | `await $.turn.start({ text: 'hi', turnId: 't1' })` | `on('turn.start', (_$, e) => ({ turnId: e.turnId }))`（型のみ確認） |
+| `agent.spawn` | `await $.agent.spawn({ … })`（引数は `AgentSpawnArgs`） | `on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))`（型のみ確認） |
+| `tool.call` | `await $.tool.call({ tool: 'Bash', command: 'ls' })`（サブエージェントは `agentId` を足す） | 型のみ確認 |
+
+- mod のフックが `void` で await せずに呼ぶ `$.model.fork` などは、起こしたあとに 1 回待ってから検査する: `await new Promise<void>(r => setTimeout(r, 50))`（既存の `flush` と同じ形）。この形で、`turn.complete` → fork → usage → model → agent.list → cwd → `prompt.submit` → `ui.toast` の順に、差し替えがすべて呼ばれることを確認した。
+- 実機（`claude -p`）で確かめたこと以外は、REPL を要する項目（`agent.list`、`breakdown`、サブスクリプション外の `rateLimits`）として、テストでは差し替えで再現する。
