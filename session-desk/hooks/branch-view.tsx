@@ -87,14 +87,21 @@ function isNowStage(stage: Stage, row: BranchRow): boolean {
   return stage.id === row.now.id && stage.status === 'todo'
 }
 
-function stageLine(stage: Stage, row: BranchRow, offsetMin: number): string {
+// 経過の 1 行の左側: 記号、段階名、件数などの補足、「今」の文言。日時は、右端に別の Text で出す。
+function stageLine(stage: Stage, row: BranchRow): string {
   const isNow = isNowStage(stage, row)
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
-  const date = stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
-  const parts = [`${symbol} ${stage.label}`, date, stage.note ?? '', isNow ? row.now.text : '']
+  const parts = [`${symbol} ${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
 
   return parts.filter(part => part !== '').join('  ')
 }
+
+function stageDate(stage: Stage, offsetMin: number): string {
+  return stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
+}
+
+// レールの記号。最初は ┌、最後は └、間は ├。
+const railGlyph = (i: number, count: number) => (i === 0 ? '┌' : i === count - 1 ? '└' : '├')
 
 type Ui = { Box: any; Text: any; Button: any }
 type Args = {
@@ -158,15 +165,25 @@ export function renderBranchTab(ui: Ui, a: Args) {
       ) : chosen.kind === 'default' ? (
         <Text dimColor>経過はありません（既定ブランチ）</Text>
       ) : (
-        chosen.stages.map(stage => {
-          const isNow = isNowStage(stage, chosen)
+        <Box flexDirection="column">
+          <Text bold>{stripControl(chosen.name)}</Text>
+          {chosen.stages.map((stage, i) => {
+            const isNow = isNowStage(stage, chosen)
+            const date = stageDate(stage, a.offsetMin)
 
-          return (
-            <Text color={isNow ? 'warning' : STATUS_COLOR[stage.status]} bold={isNow}>
-              {stripControl(stageLine(stage, chosen, a.offsetMin))}
-            </Text>
-          )
-        })
+            return (
+              <Box justifyContent="space-between" gap={2}>
+                <Box gap={1}>
+                  <Text color={isNow ? 'warning' : stage.status === 'done' ? 'success' : 'inactive'}>{railGlyph(i, chosen.stages.length)}</Text>
+                  <Text color={isNow ? 'warning' : STATUS_COLOR[stage.status]} bold={isNow}>
+                    {stripControl(stageLine(stage, chosen))}
+                  </Text>
+                </Box>
+                {date !== '' && <Text dimColor>{date}</Text>}
+              </Box>
+            )
+          })}
+        </Box>
       )}
     </Box>
   )

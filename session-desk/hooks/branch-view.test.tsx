@@ -152,10 +152,16 @@ test('the current branch is selected first; its stages show symbols, dates, the 
   await start($)
   const ui = await open($, e.calls)
   const lines = await texts(ui)
-  expect(lines).toContain('✓ ブランチを切る  —')
-  expect(lines.some(l => l.startsWith('✓ commit  ') && l.endsWith('  2 件'))).toBe(true)
+  // 日時は、右端の別の Text。経過の見出しは、選んだブランチの名前。
+  expect(lines).toContain('✓ ブランチを切る')
+  expect(lines).toContain('—')
+  expect(lines).toContain('✓ commit  2 件')
   expect(lines).toContain('● レビュー（PR 前）  次: レビュー')
   expect(lines).toContain('○ PR')
+  expect(lines).toContain('feat/a')
+  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（9 段階）。
+  const rail = lines.filter(l => ['┌', '├', '└'].includes(l))
+  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '├', '└'])
   await ui.unmount()
 })
 
@@ -332,7 +338,10 @@ test('colors: done is green, now is yellow and bold, todo is grey', async ($, on
   const e = engine(on)
   await start($)
   const ui = await open($, e.calls)
-  expect(await textJson(ui, '✓ ブランチを切る  —')).toContain('"color":"success"')
+  expect(await textJson(ui, '✓ ブランチを切る')).toContain('"color":"success"')
+  // レールの線は、済は緑、今は黄色、これからは灰色。
+  expect(await textJson(ui, '┌')).toContain('"color":"success"')
+  expect(await textJson(ui, '└')).toContain('"color":"inactive"')
   const now = await textJson(ui, '● レビュー（PR 前）  次: レビュー')
   expect(now).toContain('"color":"warning"')
   expect(now).toContain('"bold":true')
