@@ -366,3 +366,25 @@ test('addSkip adds a key once and drops the oldest past 20', async () => {
   const full = Array.from({ length: 20 }, (_, i) => `k${i}`)
   expect(addSkip(full, 'new')).toEqual([...full.slice(1), 'new'])
 })
+
+test('a phrase that cannot be sent shows a toast instead of failing silently', async ($, on) => {
+  const toasts: string[] = []
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('prompt.submit', () => {
+    throw new Error('refused')
+  })
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
+  const ui = await open($)
+  await ui.press({ key: 'quick-0' })
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 0))
+  expect(toasts).toContain('依頼を送れませんでした')
+  await ui.unmount()
+})

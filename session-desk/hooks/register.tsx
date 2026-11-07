@@ -25,9 +25,9 @@ const history = atom({ plugin: 'session-desk', key: 'history' } as const, [], SH
 const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAULT_QUICK], SHAPE)
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
-// 一覧の「もっと見る」を開いているか。タブごと。
 // 「今はしない」を押した、リリースの状態の目印（releaseKey）。状態（最新のタグ・未リリースの数）が変わると目印も変わり、また聞く。ストアにも残す。
 const releaseSkip = atom({ plugin: 'session-desk', key: 'releaseSkip' } as const, [] as string[])
+// 一覧の「もっと見る」を開いているか。タブごと。
 const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
@@ -334,8 +334,7 @@ async function toggleDetail($: any, id: string) {
 
 // サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
 async function toggleAgents($: any) {
-  const cur = await read($, agentsView)
-  await update($, agentsView, v => ({ ...v, open: !cur.open }))
+  await update($, agentsView, v => ({ ...v, open: !v.open }))
 }
 
 // 「今はしない」。リリースの状態の目印を覚えて（再起動のあとも残す）、段階を読み直す。
@@ -453,7 +452,11 @@ async function sendQuick($: any, text: string) {
   if (await blockedByDialog($)) {
     return
   }
-  void $.prompt.submit({ text })
+  $.prompt.submit({ text }).catch(() => {
+    void Promise.resolve()
+      .then(() => $.ui.toast('依頼を送れませんでした'))
+      .catch(() => {})
+  })
 }
 
 // Git タブの「次へ進む」を押す。同じ状態（key が同じ）での二度押しは、送らない。Claude が止まったら、また押せる。
@@ -461,10 +464,16 @@ let nextSentKey: string | null = null
 
 async function pressNext($: any, next: Next) {
   // Claude が動いている間は送らない。質問や許可の待ちに依頼が割り込んで、答えが衝突するため。画面の押下が古いこともあるので、ここでも見る。
-  if ((await read($, band)).state === 'running' || nextSentKey === next.key || (await blockedByDialog($))) {
+  // 印は、await の前に付ける（同時に 2 回押されても、1 回しか通らない）。送らないときは戻す。
+  if (nextSentKey === next.key) {
     return
   }
   nextSentKey = next.key
+  if ((await read($, band)).state === 'running' || (await blockedByDialog($))) {
+    nextSentKey = null
+
+    return
+  }
   stepSent.push(next.prompt)
   $.prompt.submit({ text: next.prompt }).then(
     () => {
@@ -565,8 +574,10 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    // 依頼のターンが終わったら、同じ状態でも「次へ進む」をもう一度押せる。
-    nextSentKey = null
+    // 依頼のターンが終わったら、同じ状態でも「次へ進む」をもう一度押せる。サブエージェントと自分の fork の完了では、消さない。
+    if (e.agentId === undefined && forkGuard.id === null) {
+      nextSentKey = null
+    }
     if (forkGuard.id !== null) {
       return next(e)
     }
@@ -623,7 +634,6 @@ export const register: Register = on => {
     } catch {
       // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
     }
-    desk.refresher.request(false)
     void $.ui.open({ id: PANE, title: 'Session Desk' }).catch(() => {})
     try {
       const saved = parseQuick(await $.store.get(STORE_KEY))
@@ -637,6 +647,8 @@ export const register: Register = on => {
     } catch {
       // 保存した「今はしない」を読めなくても、もう一度聞くだけ。
     }
+    // 最初の更新は、保存した答えを読んだあとに頼む（読む前の空の答えで、段階を作らないように）。
+    desk.refresher.request(false)
 
     return next(e)
   })
