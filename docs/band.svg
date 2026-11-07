@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 560" width="960" height="560" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
+  <title id="t">セッション帯と停止時の選択肢（イメージ）</title>
+  <desc id="d">右のサイドパネルの上に、全タブ共通のセッション帯がある。帯は、ゴール、停止中と直近の時間とトークン数、サブエージェント 1 件の一覧（実行中）、モデル名とコンテキストの使用率 58% と色分けのバー、5 時間枠 32% と 7 日枠 11%、ブランチ名と未 commit の数の順に並ぶ。その下に「提案」の見出しと、3 つの選択肢のボタンがある。</desc>
+
+  <rect x="0" y="0" width="960" height="560" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="959" height="559" rx="10" fill="none" stroke="#3c3c3c"/>
+
+  <!-- 左: 会話 -->
+  <text x="24" y="40" fill="#858585">&gt; 方針を決めて</text>
+  <text x="24" y="72" fill="#d4d4d4">● 案が 2 つあります。</text>
+  <text x="24" y="98" fill="#858585">   A: 既存の関数を直す</text>
+  <text x="24" y="122" fill="#858585">   B: 新しく作る</text>
+  <rect x="24" y="474" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="38" y="494" fill="#b1b9f9">サイドパネルの開閉</text>
+  <rect x="24" y="516" width="352" height="30" rx="6" fill="none" stroke="#5a5a5a"/>
+  <text x="40" y="536" fill="#858585">&gt;</text>
+  <line x1="400" y1="0" x2="400" y2="560" stroke="#3c3c3c"/>
+
+  <!-- 右: パネル -->
+  <text x="424" y="32" fill="#858585">定型文</text>
+  <text x="504" y="32" fill="#858585">履歴</text>
+  <text x="564" y="32" fill="#b1b9f9">▸</text>
+  <text x="584" y="32" fill="#d4d4d4" font-weight="bold">Git</text>
+  <line x1="424" y1="44" x2="936" y2="44" stroke="#3c3c3c"/>
+
+  <!-- 帯 -->
+  <rect x="418" y="52" width="524" height="286" rx="6" fill="none" stroke="#3c3c3c"/>
+  <text x="430" y="76" fill="#858585">ゴール</text>
+  <text x="500" y="76" fill="#d4d4d4">帯と選択肢を足す</text>
+  <text x="430" y="100" fill="#858585">停止中</text>
+  <text x="500" y="100" fill="#d4d4d4">直近 1m42s・18k tokens</text>
+  <text x="430" y="124" fill="#d4d4d4" font-weight="bold">サブエージェント 1</text>
+  <text x="640" y="124" fill="#858585">▴ 閉じる</text>
+  <text x="442" y="146" fill="#61afef">●</text>
+  <text x="462" y="146" fill="#d4d4d4">Explore  調査  実行中  0m42s</text>
+
+  <text x="430" y="176" fill="#d4d4d4">Opus 5.5</text>
+  <text x="520" y="176" fill="#858585">コンテキスト</text>
+  <rect x="640" y="164" width="96" height="12" fill="#55555a"/>
+  <rect x="640" y="164" width="40" height="12" fill="#61afef"/>
+  <rect x="680" y="164" width="8" height="12" fill="#c678dd"/>
+  <rect x="688" y="164" width="8" height="12" fill="#56b6c2"/>
+  <rect x="696" y="164" width="14" height="12" fill="#7ec699"/>
+  <rect x="710" y="164" width="4" height="12" fill="#e5c07b"/>
+  <rect x="714" y="164" width="4" height="12" fill="#d19a66"/>
+  <text x="746" y="176" fill="#d4d4d4">58%</text>
+  <text x="800" y="176" fill="#d4d4d4">116k / 200k</text>
+  <text x="430" y="200" fill="#b1b9f9">▾ 内訳</text>
+
+  <!-- 内訳 -->
+  <text x="442" y="222" fill="#61afef">■</text><text x="462" y="222" fill="#d4d4d4">メッセージ  60k</text>
+  <text x="442" y="242" fill="#c678dd">■</text><text x="462" y="242" fill="#d4d4d4">MCP ツール  12k</text>
+  <text x="642" y="222" fill="#56b6c2">■</text><text x="662" y="222" fill="#d4d4d4">システムツール  10k</text>
+  <text x="642" y="242" fill="#7ec699">■</text><text x="662" y="242" fill="#d4d4d4">システムプロンプト  8k</text>
+  <text x="442" y="262" fill="#e5c07b">■</text><text x="462" y="262" fill="#d4d4d4">メモリファイル  4k</text>
+  <text x="642" y="262" fill="#d19a66">■</text><text x="662" y="262" fill="#d4d4d4">スキル  3k</text>
+  <text x="442" y="282" fill="#858585">自動 compact まで あと 40k　概算</text>
+  <text x="750" y="282" fill="#b1b9f9">正確に数える</text>
+
+  <text x="430" y="306" fill="#d4d4d4">5時間枠 32% 残り 3h 10m</text>
+  <text x="700" y="306" fill="#d4d4d4">7日枠 11%</text>
+  <text x="430" y="326" fill="#d4d4d4">feat/session-band   未 commit 3</text>
+
+  <!-- 選択肢 -->
+  <text x="424" y="364" fill="#f2c94c" font-weight="bold">提案</text>
+  <text x="474" y="364" fill="#858585">実装方針の確認待ち</text>
+  <rect x="424" y="376" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="438" y="396" fill="#b1b9f9">A案で進める</text>
+  <rect x="566" y="376" width="130" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="580" y="396" fill="#b1b9f9">B案で進める</text>
+  <rect x="708" y="376" width="148" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="722" y="396" fill="#b1b9f9">別の案を相談</text>
+
+  <!-- 2 回押す例 -->
+  <text x="424" y="446" fill="#858585">「push」「削除」などを含む案は、2 回押す。</text>
+  <text x="424" y="472" fill="#ff6b80">本当に送りますか？</text>
+  <text x="594" y="472" fill="#6fcf97">送る</text>
+  <text x="644" y="472" fill="#d4d4d4">やめる</text>
+</svg>
