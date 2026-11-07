@@ -157,3 +157,25 @@ test('around runs after() once whether next resolves or rejects, and rethrows th
   expect(caught).toBe(error)
   expect(afters).toBe(2)
 })
+
+test('a delay that fails does not leave the refresher waiting forever', async () => {
+  const runs: boolean[] = []
+  let time = 0
+  const refresher = createRefresher({
+    run: async withGh => {
+      runs.push(withGh)
+    },
+    now: () => time,
+    delay: () => Promise.reject(new Error('sleep aborted')),
+  })
+  refresher.request(false)
+  await flush()
+  time = 100
+  refresher.request(false)
+  await flush()
+  await flush()
+  time = 10_000
+  refresher.request(false)
+  await flush()
+  expect(runs.length).toBe(2)
+})
