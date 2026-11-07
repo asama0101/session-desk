@@ -75,9 +75,9 @@ function linkOf(Link: any, url: string, href?: string) {
 }
 
 // 経過の「マージ」の段階の番号。
-const MERGE_STAGE = 7
+const MERGE_STAGE = 6
 // 経過の「リリース」の段階の番号。
-const RELEASE_STAGE = 8
+const RELEASE_STAGE = 7
 
 // マージの段階の行に出す、PR のページへのリンク。gh が返した https の URL だけ。
 function prLinkOf(row: BranchRow | undefined): { text: string; href: string } | null {
@@ -103,7 +103,7 @@ function rowColor(row: BranchRow): string {
   if (row.now.text.startsWith('commit 済み')) {
     return 'success'
   }
-  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'suggestion', 9: 'merged' }
+  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: row.now.text === 'マージ待ち' ? 'success' : 'warning', 7: 'suggestion', 8: 'merged' }
 
   return byStage[row.now.id ?? 0] ?? 'inactive'
 }

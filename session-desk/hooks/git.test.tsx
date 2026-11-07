@@ -125,7 +125,7 @@ test('when gh rejects, exits non-zero or is truncated, PR stages are unknown and
     const snap = await collect(fake({ gh }).run, null, OPTS)
     expect(snap.ghProblem).toBe(true)
     expect(snap.ghAt).toBe(null)
-    expect(statuses(snap, 'docs/b')).toEqual(['done', 'done', 'done', 'done', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown'])
+    expect(statuses(snap, 'docs/b')).toEqual(['done', 'done', 'done', 'done', 'unknown', 'unknown', 'unknown', 'unknown'])
     expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
   }
 })
@@ -156,7 +156,7 @@ test('withGh=false reuses the previous PRs for the same cwd, and drops them for 
   expect(row(again, 'docs/b')?.now.text).toBe('次: ブランチを削除')
   expect(again.ghAt).toBe(first.ghAt)
   const other = await collect(fake().run, first, { ...OPTS, withGh: false, cwd: 'D:/other' })
-  expect(statuses(other, 'docs/b')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown', 'unknown'])
+  expect(statuses(other, 'docs/b')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
   expect(other.ghAt).toBe(null)
 })
 
@@ -287,11 +287,11 @@ test('when the PR list hit its limit, enrich asks gh for the chosen branch alone
   const snap = await collect(f.run, null, OPTS)
   expect(snap.prCapped).toBe(true)
   expect(row(snap, 'feat/a')?.facts.prKnown).toBe(false)
-  expect(statuses(snap, 'feat/a')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown', 'unknown'])
+  expect(statuses(snap, 'feat/a')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
   const rich = await enrich(f.run, snap, 'feat/a')
   expect(f.calls).toContain(headKey)
   expect(row(rich, 'feat/a')?.facts.prKnown).toBe(true)
-  expect(statuses(rich, 'feat/a')?.slice(4)).toEqual(['todo', 'todo', 'todo', 'todo', 'todo'])
+  expect(statuses(rich, 'feat/a')?.slice(4)).toEqual(['todo', 'todo', 'todo', 'todo'])
 })
 
 test('remotes: every remote is listed with a tidy URL; origin makes hasRemote true', async () => {
@@ -314,7 +314,7 @@ test('no remote at all: gh is not called, push onwards is skipped, and the branc
   expect(snap.remotes).toEqual([])
   expect(f.calls.some(c => c.startsWith('gh '))).toBe(false)
   expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(false)
-  expect(statuses(snap, 'feat/a')).toEqual(['done', 'done', 'done', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
+  expect(statuses(snap, 'feat/a')).toEqual(['done', 'done', 'done', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
   expect(row(snap, 'feat/a')?.now.text).toBe('commit 済み（リモートなし）')
   expect(snap.ghProblem).toBe(false)
 })
