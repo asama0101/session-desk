@@ -34,6 +34,8 @@ const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null
 // 一覧の「もっと見る」を開いているか。タブごと。
 // 「リリースしますか」で「今はしない」を押した状態の key。状態（最新のタグ・未リリースの数）が変わると、また出る。
 const releaseSkip = atom({ plugin: 'session-desk', key: 'releaseSkip' } as const, null as string | null)
+// 「今はしない」を押したブランチ（リリースの段階を飛ばす）。
+const releaseSkipped = atom({ plugin: 'session-desk', key: 'releaseSkipped' } as const, [] as string[])
 const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
@@ -156,6 +158,7 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     cwd,
     selected: await read($, branchSel),
     now: () => new Date(),
+    releaseSkips: await read($, releaseSkipped),
   })
   if ((await $.session.cwd()) !== cwd) {
     return
@@ -384,6 +387,12 @@ function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandA
     compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
     threshold: bd.autoCompactThreshold ?? null,
   }
+}
+
+// リリースの段階の「今はしない」。そのブランチを覚えて、段階を読み直す。
+async function skipRelease($: any, desk: Desk, name: string) {
+  await update($, releaseSkipped, list => (list.includes(name) ? list : [...list, name])).catch(() => {})
+  desk.refresher?.request(false)
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
@@ -788,6 +797,7 @@ export const register: Register = on => {
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
           onNext: next => void pressNext($, next),
+          onSkipRelease: name => void skipRelease($, desk, name),
           release: { skippedKey: await read($, releaseSkip), onSkip: key => void update($, releaseSkip, () => key).catch(() => {}) },
           busy: b.state === 'running',
         },

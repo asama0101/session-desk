@@ -76,6 +76,8 @@ function linkOf(Link: any, url: string, href?: string) {
 
 // 経過の「マージ」の段階の番号。
 const MERGE_STAGE = 7
+// 経過の「リリース」の段階の番号。
+const RELEASE_STAGE = 8
 
 // マージの段階の行に出す、PR のページへのリンク。gh が返した https の URL だけ。
 function prLinkOf(row: BranchRow | undefined): { text: string; href: string } | null {
@@ -101,7 +103,7 @@ function rowColor(row: BranchRow): string {
   if (row.now.text.startsWith('commit 済み')) {
     return 'success'
   }
-  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'merged' }
+  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'suggestion', 9: 'merged' }
 
   return byStage[row.now.id ?? 0] ?? 'inactive'
 }
@@ -140,6 +142,8 @@ type Args = {
   onNext(next: Next): void
   // 「リリースしますか」の「今はしない」。skippedKey は、しないと答えた状態の key（状態が変わると、また出る）。
   release: { skippedKey: string | null; onSkip(key: string): void }
+  // リリースの段階の「今はしない」。そのブランチの、リリースの段階を飛ばす。
+  onSkipRelease(name: string): void
   // Claude が動いている間は真。ボタンは押せない（質問や許可の待ちと、依頼が衝突しないように）。
   busy: boolean
 }
@@ -249,6 +253,11 @@ export function renderBranchTab(ui: Ui, a: Args) {
                 </Box>
                 {date !== '' && <Text dimColor>{date}</Text>}
                 {isNow && chosen.now.id === MERGE_STAGE && prLink !== null && <Text>{linkOf(Link, prLink.text, prLink.href)}</Text>}
+                {isNow && chosen.now.id === RELEASE_STAGE && next !== null && (
+                  <Button key="git-stage-release-skip" plain label="今はしない" onPress={() => a.onSkipRelease(chosen.name)}>
+                    <Text>今はしない</Text>
+                  </Button>
+                )}
                 {isNow && next !== null && (a.busy ? (
                   <Text dimColor>{next.label}</Text>
                 ) : (

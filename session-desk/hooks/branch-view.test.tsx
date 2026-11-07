@@ -164,9 +164,9 @@ test('the current branch is selected first; its stages show symbols, dates, the 
   expect(lines).toContain('● push  次: push')
   expect(lines).toContain('○ PR')
   expect(lines).toContain('feat/a')
-  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（8 段階）。
+  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（9 段階）。
   const rail = lines.filter(l => ['┌', '├', '└'].includes(l))
-  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '└'])
+  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '├', '└'])
   await ui.unmount()
 })
 
@@ -688,4 +688,39 @@ test('merge: the stage row of a PR waiting to be merged carries a link to the PR
   expect(draw(prRow({ url: 'javascript:alert(1)' }))).not.toContain('javascript')
   // Link が渡されないときは、文字で出す。
   expect(draw(row, undefined as any)).toContain('PR #19  github.com/a/b/pull/19')
+})
+
+test('release stage row: 「▶ リリースする」 and 「今はしない」 sit on the 今 row of a merged branch', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const pressed: string[] = []
+  const row = prRow({ state: 'MERGED', mergedAt: '2026-11-05T14:00:00+09:00' })
+  expect(row.now).toEqual({ id: 8, text: '次: リリース' })
+  const tree = renderBranchTab(ui, {
+    snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: '00:00:00' } as any,
+    selected: null,
+    columns: 80,
+    offsetMin: 0,
+    onSelect() {},
+    more: { open: false, onToggle() {} },
+    onNext(n: any) {
+      pressed.push(`next:${n.label}`)
+    },
+    onSkipRelease(name: string) {
+      pressed.push(`skip:${name}`)
+    },
+    release: { skippedKey: null, onSkip() {} },
+    busy: false,
+  } as any)
+  const json = JSON.stringify(tree)
+  expect(json).toContain('"key":"git-next"')
+  expect(json).toContain('"key":"git-stage-release-skip"')
+  expect(json).toContain('▶ リリースする')
+  // マージ済みなので、マージの行にはリンクを出さない（開いた PR のときだけ）。
+  expect(json).not.toContain('/pull/19')
+  // 忙しいときは、リリースするは薄い字になるが、「今はしない」は押せる。
+  const busy = JSON.stringify(
+    renderBranchTab(ui, { snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: 'x' } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, onSkipRelease() {}, release: { skippedKey: null, onSkip() {} }, busy: true } as any),
+  )
+  expect(busy).not.toContain('"key":"git-next"')
+  expect(busy).toContain('"key":"git-stage-release-skip"')
 })
