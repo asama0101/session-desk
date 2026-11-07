@@ -21,7 +21,6 @@ const BASE: BandArgs = {
   git: null,
   steps: null,
   on: {
-    toggleBreakdown() {},
     toggleAgents() {},
     exact() {},
     toggleDetail() {},
@@ -127,86 +126,93 @@ test('limits, git, and omitted lines', async () => {
   expect(texts({ git: { branch: null, dirtyCount: null } })).toContain('(detached)')
 })
 
-const BREAKDOWN = (open: boolean, compact: number | null = 40_000) => ({
-  open,
+const BREAKDOWN = (compact: number | null = 40_000) => ({
   exact: false,
   compactIn: compact,
   threshold: 900_000,
   rows: [
-    { id: 'messages' as const, name: 'Messages', tokens: 600_000, percent: 60, detail: null, detailOpen: false },
+    { id: 'messages' as const, name: 'Messages', tokens: 600_000, detail: null, detailOpen: false },
     {
       id: 'mcp' as const,
       name: 'MCP tools',
       tokens: 260_000,
-      percent: 26,
       detail: [{ name: 'playwright', tokens: 120_000 }],
       detailOpen: true,
     },
   ],
 })
 
-test('breakdown closed hides rows; open shows rows, 概算, exact button, details', async () => {
-  const closed = draw({ breakdown: BREAKDOWN(false) })
-  expect(labelsOf(closed)).toContain('▸ 内訳')
-  expect(textsOf(closed)).not.toContain('Messages')
-  const open = draw({ breakdown: BREAKDOWN(true) })
-  const t = textsOf(open)
-  expect(labelsOf(open)).toContain('▾ 内訳')
-  for (const w of ['Messages', '600k', '60%', 'MCP tools', 'playwright', '120k']) expect(t).toContain(w)
+test('breakdown legend is always drawn: rows, 概算, exact button, details', async () => {
+  const tree = draw({ breakdown: BREAKDOWN() })
+  const t = textsOf(tree)
+  expect(labelsOf(tree)).not.toContain('▸ 内訳')
+  for (const w of ['Messages', '600k', 'MCP tools', 'playwright', '120k']) expect(t).toContain(w)
   expect(t.join('|')).toContain('概算')
-  expect(labelsOf(open)).toContain('正確に数える')
-  expect(byKey(open, 'band-exact')).toBeDefined()
-  expect(byKey(open, 'band-detail-mcp')).toBeDefined()
-  expect(byKey(open, 'band-detail-messages')).toBeUndefined()
+  expect(labelsOf(tree)).toContain('正確に数える')
+  expect(byKey(tree, 'band-exact')).toBeDefined()
+  expect(byKey(tree, 'band-detail-mcp')).toBeDefined()
+  expect(byKey(tree, 'band-detail-messages')).toBeUndefined()
   expect(t).toContain('自動 compact まで あと 40k（閾値 900k）')
-  const noThreshold = textsOf(draw({ breakdown: { ...BREAKDOWN(true), threshold: null } }))
-  expect(noThreshold).toContain('自動 compact まで あと 40k')
-  expect(textsOf(draw({ breakdown: BREAKDOWN(true, null) })).join('')).not.toContain('自動 compact まで')
-  // 順序: 積み上げバー、行、compact の行、概算
-  const flat = JSON.stringify(draw({ context: CTX(86), breakdown: BREAKDOWN(true) }))
+  expect(textsOf(draw({ breakdown: { ...BREAKDOWN(), threshold: null } }))).toContain('自動 compact まで あと 40k')
+  expect(textsOf(draw({ breakdown: BREAKDOWN(null) })).join('')).not.toContain('自動 compact まで')
+  // 順序: バー、凡例、compact の行、概算
+  const flat = JSON.stringify(draw({ context: CTX(86), breakdown: BREAKDOWN() }))
   const at = (w: string) => flat.indexOf(w)
-  const barAt = flat.indexOf('█', flat.indexOf('▾ 内訳'))
-  expect(barAt).toBeGreaterThan(-1)
-  expect(barAt).toBeLessThan(at('Messages'))
+  expect(at('█')).toBeLessThan(at('Messages'))
   expect(at('MCP tools')).toBeLessThan(at('自動 compact まで'))
   expect(at('自動 compact まで')).toBeLessThan(at('概算'))
   expect(at('概算')).toBeLessThan(at('band-exact'))
 })
 
 test('an exact breakdown says 正確 instead of 概算, and the button stays', async () => {
-  const exact = draw({ breakdown: { ...BREAKDOWN(true), exact: true } })
+  const exact = draw({ breakdown: { ...BREAKDOWN(), exact: true } })
   expect(textsOf(exact)).toContain('正確')
   expect(textsOf(exact)).not.toContain('概算')
   expect(labelsOf(exact)).toContain('正確に数える')
 })
 
-test('the breakdown bar is drawn only when open: 32 cells wide, 16 when columns < 40', async () => {
+test('the context bar is 24 cells wide, 12 when columns < 40', async () => {
   const cells = (tree: Node) =>
     find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).reduce(
       (sum, n) => sum + (n.children[0] as string).length,
       0,
     )
-  // 閉じた内訳の描画には文脈のバーだけがある。開いた描画との差が、内訳のバー。
-  const breakdownBar = (columns: number | undefined) =>
-    cells(draw({ context: CTX(86), breakdown: BREAKDOWN(true), columns })) - cells(draw({ context: CTX(86), breakdown: BREAKDOWN(false), columns }))
-  expect(breakdownBar(undefined)).toBe(32)
-  expect(breakdownBar(120)).toBe(32)
-  expect(breakdownBar(30)).toBe(16)
+  expect(cells(draw({ context: CTX(86) }))).toBe(24)
+  expect(cells(draw({ context: CTX(86), columns: 120 }))).toBe(24)
+  expect(cells(draw({ context: CTX(86), columns: 30 }))).toBe(12)
+})
+
+test('the band sits in a round frame headed Session + model; sections are split by a rule', async () => {
+  const tree = draw({ model: 'Opus 5.5', goal: 'G', context: CTX(50), git: { branch: 'main', dirtyCount: 0 } })
+  const frame = find(tree, n => n.props?.borderStyle === 'round')[0]
+  expect(frame).toBeDefined()
+  expect(textsOf(frame).slice(0, 2)).toEqual(['Session', 'Opus 5.5'])
+  expect(textsOf(tree).filter(x => /^┄+$/.test(x))).toHaveLength(2)
+  // 値のある段だけを区切る。コンテキストだけなら線はない。
+  expect(textsOf(draw({ context: CTX(50) })).filter(x => /^┄+$/.test(x))).toHaveLength(0)
 })
 
 test('detail closed hides the per-item rows', async () => {
-  const b = BREAKDOWN(true)
+  const b = BREAKDOWN()
   b.rows[1].detailOpen = false
   expect(textsOf(draw({ breakdown: b }))).not.toContain('playwright')
 })
 
-test('steps: choices, heading with reason, confirm view, null shows nothing', async () => {
+test('steps: framed list with numbers, risky rows marked, red confirm frame, null shows nothing', async () => {
   const items = ['git status を見る', 'rm -rf x']
   const pick = draw({ steps: { items, reason: '理由R', confirming: null } })
   expect(labelsOf(pick)).toEqual(expect.arrayContaining(items))
   expect(byKey(pick, 'band-step-0')).toBeDefined()
-  expect(textsOf(pick).join('|')).toContain('提案')
-  expect(textsOf(pick).join('|')).toContain('理由R')
+  const t = textsOf(pick)
+  expect(t.join('|')).toContain('提案')
+  expect(t.join('|')).toContain('理由R')
+  // 番号と、危険な語を含む案だけの「2 回押す」は、ボタンの中の Text。
+  const inside = find(pick, n => n.type === 'Text').flatMap(n => n.children.filter(c => typeof c === 'string') as string[])
+  expect(inside).toEqual(expect.arrayContaining(['1  ', '2  ']))
+  expect(inside.filter(x => x === '  ⚠ 2 回押す')).toHaveLength(1)
+  expect(colorOf(pick, 'rm -rf x')).toBe('warning')
+  expect(colorOf(pick, 'git status を見る')).toBe('suggestion')
+  expect(find(pick, n => n.props?.borderColor === 'error')).toHaveLength(0)
   const conf = draw({ steps: { items, reason: '理由R', confirming: 1 } })
   expect(textsOf(conf)).toContain('本当に送りますか？')
   expect(textsOf(conf)).toContain('rm -rf x')
@@ -215,6 +221,7 @@ test('steps: choices, heading with reason, confirm view, null shows nothing', as
   expect(byKey(conf, 'band-step-confirm-1')).toBeDefined()
   expect(byKey(conf, 'band-step-cancel')).toBeDefined()
   expect(byKey(conf, 'band-step-1')).toBeUndefined()
+  expect(find(conf, n => n.props?.borderColor === 'error')).toHaveLength(1)
   expect(textsOf(conf).join('')).not.toContain('提案')
   expect(texts({ steps: null }).join('')).not.toContain('提案')
   expect(labels({ steps: null })).toEqual([])
@@ -237,12 +244,12 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
     git: { branch: bad('branch'), dirtyCount: 1 },
     agents: { running: 1, rows: [{ ...ROWS[0], type: bad('atype'), description: bad('adesc') }], open: true },
     breakdown: {
-      ...BREAKDOWN(true),
-      rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, percent: 1, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
+      ...BREAKDOWN(),
+      rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
     },
   }
   check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: null } }), [
     'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
   ])
-  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: 0 } }), ['s0', 's1', 'goal'])
+  check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), confirming: 0 } }), ['s0', 'goal'])
 })

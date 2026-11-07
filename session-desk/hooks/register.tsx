@@ -72,7 +72,7 @@ const agentsView = atom(
 )
 const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
-  { breakdown: false, exact: false, detail: [] as string[] },
+  { exact: false, detail: [] as string[] },
 )
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
 const bandFetch = { running: false, again: false }
@@ -320,10 +320,6 @@ async function countExactly($: any) {
   }
 }
 
-async function toggleBreakdown($: any) {
-  await update($, bandUi, v => ({ ...v, breakdown: !v.breakdown }))
-}
-
 async function toggleDetail($: any, id: string) {
   await update($, bandUi, v => ({ ...v, detail: v.detail.includes(id) ? v.detail.filter(d => d !== id) : [...v.detail, id] }))
 }
@@ -359,12 +355,9 @@ const CATEGORY_NAMES: Record<CategoryId, string> = {
 }
 
 // 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
-function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }, exact: boolean): BandArgs['breakdown'] {
+function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandArgs['breakdown'] {
   if (bd === null) {
     return null
-  }
-  if (!ui.breakdown) {
-    return { open: false, exact, rows: [], compactIn: null, threshold: null }
   }
   const sums = new Map<CategoryId, number>()
   let used = 0
@@ -374,11 +367,6 @@ function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }, ex
     used += c.kind === 'used' ? c.tokens : 0
   }
   const lists: Partial<Record<CategoryId, { name: string; tokens: number }[]>> = { mcp: bd.mcpTools, memory: bd.memoryFiles, skills: bd.skills }
-  const percentOf = (tokens: number) => {
-    const p = bd.rawMaxTokens > 0 ? (tokens / bd.rawMaxTokens) * 100 : 0
-
-    return p < 10 ? Math.round(p * 10) / 10 : Math.round(p)
-  }
   const rows = [...sums]
     .filter(([, tokens]) => tokens > 0)
     .sort(([a, x], [b, y]) => (a === 'free' ? 1 : b === 'free' ? -1 : y - x))
@@ -389,14 +377,12 @@ function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }, ex
         id,
         name: CATEGORY_NAMES[id],
         tokens,
-        percent: percentOf(tokens),
         detail: list !== undefined && list.length > 0 ? [...list].sort((p, q) => q.tokens - p.tokens) : null,
         detailOpen: ui.detail.includes(id),
       }
     })
 
   return {
-    open: true,
     exact,
     rows,
     compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
@@ -847,17 +833,6 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box gap={2}>
-          {TABS.map(item =>
-            current === item.id ? (
-              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
-                <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
-              </Button>
-            ) : (
-              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
-            ),
-          )}
-        </Box>
         {renderBand({ Box, Text, Button }, {
           goal: b.goal,
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
@@ -871,9 +846,20 @@ export const register: Register = on => {
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。
           steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, confirming: b.confirming },
-          on: { toggleBreakdown: () => void toggleBreakdown($).catch(() => {}), toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
+          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
           columns: e.props.bodyColumns,
         })}
+        <Box gap={2}>
+          {TABS.map(item =>
+            current === item.id ? (
+              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
+                <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
+              </Button>
+            ) : (
+              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
+            ),
+          )}
+        </Box>
         {body}
       </Box>
     )
