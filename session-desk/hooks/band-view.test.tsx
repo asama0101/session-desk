@@ -171,15 +171,40 @@ test('an exact breakdown says 正確 instead of 概算, and the button stays', a
   expect(labelsOf(exact)).toContain('正確に数える')
 })
 
-test('the context bar is 24 cells wide, 12 when columns < 40', async () => {
+test('the context bar fills the frame: columns - 4 cells (min 8), 24 when columns is unknown', async () => {
   const cells = (tree: Node) =>
     find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^[█░]+$/.test(n.children[0] as string)).reduce(
       (sum, n) => sum + (n.children[0] as string).length,
       0,
     )
   expect(cells(draw({ context: CTX(86) }))).toBe(24)
-  expect(cells(draw({ context: CTX(86), columns: 120 }))).toBe(24)
-  expect(cells(draw({ context: CTX(86), columns: 30 }))).toBe(12)
+  expect(cells(draw({ context: CTX(86), columns: 60 }))).toBe(56)
+  expect(cells(draw({ context: CTX(86), columns: 6 }))).toBe(8)
+})
+
+test('the context numbers sit at the right end of the label row', async () => {
+  const row = find(draw({ context: CTX(86) }), n => n.props?.justifyContent === 'space-between')[0]
+  expect(row).toBeDefined()
+  expect(textsOf(row)).toEqual(['コンテキスト', '86%', '860k / 1M'])
+})
+
+test('limits draw a bar each: filled by percent, green / yellow / red', async () => {
+  const limits = [
+    { label: '5時間枠', percent: 50, remaining: null },
+    { label: '7日枠', percent: 85, remaining: null },
+    { label: '日', percent: 96, remaining: null },
+  ]
+  const tree = draw({ limits })
+  const fills = find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^█+$/.test(n.children[0] as string))
+  expect(fills.map(n => (n.children[0] as string).length)).toEqual([6, 10, 12])
+  expect(fills.map(n => n.props.color)).toEqual(['success', 'warning', 'error'])
+  expect(find(tree, n => n.type === 'Text' && n.children[0] === '░'.repeat(6))).toHaveLength(1)
+  const narrow = draw({ limits: [limits[0]], columns: 30 })
+  expect(find(narrow, n => n.type === 'Text' && n.children[0] === '█'.repeat(3))).toHaveLength(1)
+})
+
+test('the branch name is blue', async () => {
+  expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), 'main')).toBe('blue')
 })
 
 test('the band sits in a round frame headed Session + model; sections are split by a rule', async () => {

@@ -36,8 +36,11 @@ export type BandArgs = {
 }
 
 const NARROW_COLUMNS = 40
+// columns が分からないときのバーの幅。分かるときは、枠の中の幅（枠線と余白の 4 列を除く）いっぱいに伸ばす。
 const BAR_WIDTH = 24
-const BAR_WIDTH_NARROW = 12
+const BAR_WIDTH_MIN = 8
+const LIMIT_BAR_WIDTH = 12
+const LIMIT_BAR_WIDTH_NARROW = 6
 // 枠の中の区切り線の既定の長さ（columns が分からないとき）。
 const RULE_WIDTH = 36
 
@@ -57,6 +60,19 @@ export function renderBand(ui: Ui, a: BandArgs) {
     return level === 'normal' ? <Text bold={bold}>{`${percent}%`}</Text> : <Text bold={bold} color={level}>{`${percent}%`}</Text>
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
+  const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 4)
+  // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
+  const limitBar = (percent: number, width: number) => {
+    const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
+    const level = usageColor(percent)
+
+    return (
+      <Box>
+        <Text color={level === 'normal' ? 'success' : level}>{'█'.repeat(filled)}</Text>
+        <Text dimColor>{'░'.repeat(width - filled)}</Text>
+      </Box>
+    )
+  }
   const bar = (parts: { id: CategoryId; tokens: number }[], percent: number, width: number) => (
     <Box>
       {barCells(parts, percent, width).map((c, i) => (
@@ -111,13 +127,15 @@ export function renderBand(ui: Ui, a: BandArgs) {
     ctx === null && bd === null ? null : (
       <Box flexDirection="column">
         {ctx !== null && (
-          <Box gap={2} flexWrap="wrap">
+          <Box justifyContent="space-between">
             <Text dimColor>コンテキスト</Text>
-            {pct(ctx.percent, true)}
-            {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
+            <Box gap={2}>
+              {pct(ctx.percent, true)}
+              {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
+            </Box>
           </Box>
         )}
-        {ctx !== null && bar(ctx.parts, ctx.percent, narrow ? BAR_WIDTH_NARROW : BAR_WIDTH)}
+        {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
           <Box flexDirection="column">
             <Box columnGap={2} flexWrap="wrap">
@@ -170,6 +188,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
         {a.limits.map(l => (
           <Box key={`limit-${l.label}`} gap={1}>
             <Text dimColor>{l.label}</Text>
+            {limitBar(l.percent, narrow ? LIMIT_BAR_WIDTH_NARROW : LIMIT_BAR_WIDTH)}
             {pct(l.percent)}
             {l.remaining !== null && <Text dimColor>{l.remaining}</Text>}
           </Box>
@@ -180,7 +199,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const git =
     a.git !== null ? (
       <Box gap={2} flexWrap="wrap">
-        <Text color="suggestion">{a.git.branch === null ? '(detached)' : clean(a.git.branch)}</Text>
+        <Text color="blue">{a.git.branch === null ? '(detached)' : clean(a.git.branch)}</Text>
         {a.git.dirtyCount !== null && <Text>{`未 commit ${a.git.dirtyCount}`}</Text>}
       </Box>
     ) : null
