@@ -23,6 +23,8 @@ declare module 'claude-code' {
       }
       usageView: {
         model: string | null
+        effort: string | null
+        cwd: string | null
         context: { percent: number; tokens: number | null; window: number | null } | null
         rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
         breakdown: {

@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, BRANCH_COLOR, CATEGORY_COLORS, formatDuration, formatTokens, modelColor, usageColor } from './band'
+import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, formatDuration, formatTokens, modelColor, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -12,6 +12,10 @@ export type BandArgs = {
   stop: 'error' | 'refusal' | 'aborted' | null
   agents: { running: number; rows: AgentRow[]; open: boolean }
   model: string | null
+  // 今のモデルの effort（low・medium・high・xhigh・max など）。読めなければ null。
+  effort: string | null
+  // セッションのディレクトリ。読めなければ null。
+  cwd: string | null
   context: { percent: number; tokens: number | null; window: number | null; parts: { id: CategoryId; tokens: number }[] } | null
   breakdown: {
     // 「正確に数える」の結果を出しているとき真（「概算」の代わりに「正確」と出す）。
@@ -286,12 +290,21 @@ export function renderBand(ui: Ui, a: BandArgs) {
             <Box gap={2}>
               <Text bold>Session</Text>
               {a.model !== null && (
-                <Text bold color={modelColor(a.model)}>
-                  {clean(a.model)}
-                </Text>
+                <Box gap={1}>
+                  <Text bold color={modelColor(a.model)}>
+                    {clean(a.model)}
+                  </Text>
+                  {a.effort !== null && <Text dimColor>/</Text>}
+                  {a.effort !== null && (
+                    <Text bold={a.effort.toLowerCase() === 'max'} color={EFFORT_COLORS[a.effort.toLowerCase()] ?? undefined}>
+                      {clean(a.effort)}
+                    </Text>
+                  )}
+                </Box>
               )}
             </Box>
           )}
+          {hasHead && a.cwd !== null && <Text dimColor>{clean(fitTail(a.cwd, Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2)))}</Text>}
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">
               {n > 0 && <Box marginY={1}>{thin}</Box>}

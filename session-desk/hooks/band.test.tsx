@@ -11,6 +11,8 @@ import {
   formatTokens,
   limitRows,
   modelColor,
+  fitTail,
+  EFFORT_COLORS,
   nextAgentsOpen,
   parseForkReply,
   removeTool,
@@ -203,4 +205,26 @@ test('nextAgentsOpen: opens on 0 to 1, respects a manual close, resets at 0', as
 
 test('stripControl: removes BOM, line/paragraph separators, soft hyphen and ALM', async () => {
   expect(stripControl('a\ufeffb\u2028c\u2029d\u00ade\u061cf')).toBe('abcdef')
+})
+
+test('fitTail keeps the tail of a long path, counting full-width characters as 2 cells, and starts it with …', async () => {
+  expect(fitTail('D:/p', 20)).toBe('D:/p')
+  expect(fitTail('D:/claude/local-repo/session-desk', 40)).toBe('D:/claude/local-repo/session-desk')
+  const cut = fitTail('D:/claude/local-repo/session-desk', 20)
+  expect(cut.startsWith('…')).toBe(true)
+  expect(cut.endsWith('session-desk')).toBe(true)
+  expect([...cut].length).toBeLessThanOrEqual(20)
+  // 全角は 2 桁。10 桁なら、全角は 4 文字までと … 
+  const jp = fitTail('D:/資料/設計書/第一版', 10)
+  expect(jp.startsWith('…')).toBe(true)
+  expect(jp.endsWith('第一版')).toBe(true)
+  const cells = [...jp].reduce((sum, ch) => sum + ((ch.codePointAt(0) ?? 0) > 0x2e80 ? 2 : 1), 0)
+  expect(cells).toBeLessThanOrEqual(10)
+})
+
+test('EFFORT_COLORS: low grey, medium plain, high cyan, xhigh and max purple', async () => {
+  expect(EFFORT_COLORS.medium).toBe(null)
+  expect(EFFORT_COLORS.high).toBe(BRANCH_COLOR)
+  expect(EFFORT_COLORS.low).not.toBe(EFFORT_COLORS.high)
+  expect(EFFORT_COLORS.xhigh).toBe(EFFORT_COLORS.max)
 })

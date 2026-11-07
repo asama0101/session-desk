@@ -870,3 +870,52 @@ test('a toast that fails to show does not stop the 正確に数える button fro
   expect(calls.filter(c => c.breakdown === 'full').length).toBe(2)
   await ui.unmount()
 })
+
+// ---- セッション見出しの effort とディレクトリ ----
+
+test('the header shows model / effort from the /config row and the session directory', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }, { key: 'effortLevel', label: 'Effort level', value: 'high' }] }))
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('claude-test-model')
+  expect(t).toContain('/')
+  expect(t).toContain('high')
+  expect(t).toContain('D:/p')
+  await ui.unmount()
+})
+
+test('without an effort row in /config the header shows only the model and the directory', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', value: 'dark' }] }))
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('claude-test-model')
+  expect(t).not.toContain('high')
+  expect(t).toContain('D:/p')
+  await ui.unmount()
+})
+
+test('a failing /config read or session.cwd leaves the rest of the header alone', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  on('config.list', () => {
+    throw new Error('no config')
+  })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  expect(t).toContain('claude-test-model')
+  expect(t).not.toContain('/')
+  await ui.unmount()
+})

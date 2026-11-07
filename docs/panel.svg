@@ -1,91 +1,93 @@
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 982" width="960" height="982" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 1004" width="960" height="1004" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">Session Desk のパネル（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは、上から順に、見出し（Session と Opus 5.5）とゴールと停止中の状態、コンテキストの使用率 58% と色分けのバーと縦の凡例、5 時間枠と 7 日枠のバーとブランチ名、タブの行（定型文・履歴・Git。選んだ定型文は水色の太字に下線）、新しい定型文を入れる入力欄、3 件の定型文が並ぶ。各段は細い線で区切られる。定型文の操作は、どの行も「送信」「削除」「上へ」「下へ」の順で、先頭の上へと末尾の下へは薄い字。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは、上から順に、見出し（Session と Opus 5.5 / high）とディレクトリとゴールと停止中の状態、コンテキストの使用率 58% と色分けのバーと縦の凡例、5 時間枠と 7 日枠のバーとブランチ名、タブの行（定型文・履歴・Git。選んだ定型文は水色の太字に下線）、新しい定型文を入れる入力欄、3 件の定型文が並ぶ。各段は細い線で区切られる。定型文の操作は、どの行も「送信」「削除」「上へ」「下へ」の順で、先頭の上へと末尾の下へは薄い字。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
 
   <!-- 端末 -->
-  <rect x="0" y="0" width="960" height="982" rx="10" fill="#1e1e1e"/>
-  <rect x="0.5" y="0.5" width="959" height="981" rx="10" fill="none" stroke="#3c3c3c"/>
+  <rect x="0" y="0" width="960" height="1004" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="959" height="1003" rx="10" fill="none" stroke="#3c3c3c"/>
 
   <!-- 左: 会話と入力欄、開閉ボタン -->
   <text x="24" y="40" fill="#858585">&gt; 残りのタスクは？</text>
   <text x="24" y="72" fill="#d4d4d4">● 未完了のタスクは 2 件です。</text>
   <text x="24" y="98" fill="#858585">   1. README の画像を足す</text>
   <text x="24" y="122" fill="#858585">   2. zip での導入手順を書く</text>
-  <rect x="24" y="854" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="38" y="874" fill="#b1b9f9">サイドパネルの開閉</text>
-  <rect x="24" y="896" width="560" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
-  <text x="40" y="932" fill="#858585">&gt;</text>
-  <line x1="608" y1="0" x2="608" y2="982" stroke="#3c3c3c"/>
+  <rect x="24" y="876" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="38" y="896" fill="#b1b9f9">サイドパネルの開閉</text>
+  <rect x="24" y="918" width="560" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
+  <text x="40" y="954" fill="#858585">&gt;</text>
+  <line x1="608" y1="0" x2="608" y2="1004" stroke="#3c3c3c"/>
 
   <!-- 右: パネル（帯、タブ、定型文） -->
   <text x="632" y="40" fill="#d4d4d4" font-weight="bold">Session</text>
   <text x="724" y="40" fill="#d78bff" font-weight="bold">Opus 5.5</text>
-  <text x="632" y="62" fill="#858585">ゴール</text>
-  <text x="698" y="62" fill="#d4d4d4">帯と選択肢を足す</text>
-  <text x="632" y="84" fill="#858585">停止中</text>
-  <text x="702" y="84" fill="#d4d4d4">直近 1m42s</text>
-  <text x="818" y="84" fill="#d4d4d4">18k tokens</text>
-  <line x1="632" y1="123" x2="936" y2="123" stroke="#464a54"/>
-  <text x="632" y="172" fill="#858585">コンテキスト</text>
-  <text x="826" y="172" fill="#6fcf97" font-weight="bold" text-anchor="end">58%</text>
-  <text x="936" y="172" fill="#6fcf97" text-anchor="end">116k / 200k</text>
-  <rect x="632" y="181" width="304" height="18" fill="#3a3d44"/>
-  <rect x="632.0" y="181" width="91.2" height="18" fill="#61afef"/>
-  <rect x="723.2" y="181" width="18.2" height="18" fill="#c678dd"/>
-  <rect x="741.4" y="181" width="15.2" height="18" fill="#56b6c2"/>
-  <rect x="756.6" y="181" width="12.2" height="18" fill="#7ec699"/>
-  <rect x="768.8" y="181" width="6.1" height="18" fill="#e5c07b"/>
-  <rect x="774.9" y="181" width="4.6" height="18" fill="#d19a66"/>
-  <rect x="779.4" y="181" width="28.9" height="18" fill="#9aa0ab"/>
-  <text x="634" y="238" fill="#61afef">■</text>
-  <text x="652" y="238" fill="#d4d4d4">メッセージ 60k</text>
-  <text x="634" y="260" fill="#c678dd">■</text>
-  <text x="652" y="260" fill="#d4d4d4">MCP 12k</text>
-  <text x="634" y="282" fill="#56b6c2">■</text>
-  <text x="652" y="282" fill="#d4d4d4">ツール 10k</text>
-  <text x="634" y="304" fill="#7ec699">■</text>
-  <text x="652" y="304" fill="#d4d4d4">システム 8k</text>
-  <text x="634" y="326" fill="#e5c07b">■</text>
-  <text x="652" y="326" fill="#d4d4d4">メモリ 4k</text>
-  <text x="634" y="348" fill="#d19a66">■</text>
-  <text x="652" y="348" fill="#d4d4d4">スキル 3k</text>
-  <text x="634" y="370" fill="#9aa0ab">■</text>
-  <text x="652" y="370" fill="#d4d4d4">その他 19k</text>
-  <text x="632" y="414" fill="#858585">自動 compact まで あと 40k</text>
-  <text x="632" y="436" fill="#858585">概算</text>
-  <text x="682" y="436" fill="#b1b9f9">正確に数える</text>
-  <line x1="632" y1="475" x2="936" y2="475" stroke="#464a54"/>
-  <text x="632" y="524" fill="#858585">5時間枠</text>
-  <rect x="712" y="515" width="74" height="10" fill="#3a3d44"/><rect x="712" y="515" width="24" height="10" fill="#6fcf97"/>
-  <text x="806" y="524" fill="#6fcf97">32%</text>
-  <text x="838" y="524" fill="#858585">残り 3h10m</text>
-  <text x="632" y="546" fill="#858585">7日枠</text>
-  <rect x="712" y="537" width="74" height="10" fill="#3a3d44"/><rect x="712" y="537" width="10" height="10" fill="#6fcf97"/>
-  <text x="806" y="546" fill="#6fcf97">11%</text>
-  <text x="632" y="568" fill="#4fd6e0">main</text>
-  <text x="682" y="568" fill="#d4d4d4">未 commit 0</text>
-  <line x1="632" y1="607" x2="936" y2="607" stroke="#464a54"/>
-  <text x="632" y="656" fill="#4fd6e0" font-weight="bold">定型文</text>
-  <line x1="632" y1="660" x2="690" y2="660" stroke="#4fd6e0"/>
-  <text x="728" y="656" fill="#858585">履歴</text>
-  <text x="788" y="656" fill="#858585">Git</text>
-  <rect x="632" y="683" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
-  <text x="644" y="700" fill="#858585">新しい定型文を入力して Enter</text>
-  <text x="632" y="744" fill="#d4d4d4">残りのタスクは？</text>
-  <text x="632" y="766" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="766" fill="#ff6b80">× 削除</text>
-  <text x="772" y="766" fill="#555a65">▲ 上へ</text>
-  <text x="842" y="766" fill="#858585">▼ 下へ</text>
-  <text x="632" y="810" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
-  <text x="632" y="832" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
-  <text x="632" y="854" fill="#d4d4d4">して</text>
-  <text x="632" y="876" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="876" fill="#ff6b80">× 削除</text>
-  <text x="772" y="876" fill="#858585">▲ 上へ</text>
-  <text x="842" y="876" fill="#858585">▼ 下へ</text>
-  <text x="632" y="920" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
-  <text x="632" y="942" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="942" fill="#ff6b80">× 削除</text>
-  <text x="772" y="942" fill="#858585">▲ 上へ</text>
-  <text x="842" y="942" fill="#555a65">▼ 下へ</text>
+  <text x="808" y="40" fill="#858585">/</text><text x="826" y="40" fill="#4fd6e0" font-weight="bold">high</text>
+  <text x="632" y="62" fill="#858585">D:\claude\local-repo\session-desk</text>
+  <text x="632" y="84" fill="#858585">ゴール</text>
+  <text x="698" y="84" fill="#d4d4d4">帯と選択肢を足す</text>
+  <text x="632" y="106" fill="#858585">停止中</text>
+  <text x="702" y="106" fill="#d4d4d4">直近 1m42s</text>
+  <text x="818" y="106" fill="#d4d4d4">18k tokens</text>
+  <line x1="632" y1="145" x2="936" y2="145" stroke="#464a54"/>
+  <text x="632" y="194" fill="#858585">コンテキスト</text>
+  <text x="826" y="194" fill="#6fcf97" font-weight="bold" text-anchor="end">58%</text>
+  <text x="936" y="194" fill="#6fcf97" text-anchor="end">116k / 200k</text>
+  <rect x="632" y="203" width="304" height="18" fill="#3a3d44"/>
+  <rect x="632.0" y="203" width="91.2" height="18" fill="#61afef"/>
+  <rect x="723.2" y="203" width="18.2" height="18" fill="#c678dd"/>
+  <rect x="741.4" y="203" width="15.2" height="18" fill="#56b6c2"/>
+  <rect x="756.6" y="203" width="12.2" height="18" fill="#7ec699"/>
+  <rect x="768.8" y="203" width="6.1" height="18" fill="#e5c07b"/>
+  <rect x="774.9" y="203" width="4.6" height="18" fill="#d19a66"/>
+  <rect x="779.4" y="203" width="28.9" height="18" fill="#9aa0ab"/>
+  <text x="634" y="260" fill="#61afef">■</text>
+  <text x="652" y="260" fill="#d4d4d4">メッセージ 60k</text>
+  <text x="634" y="282" fill="#c678dd">■</text>
+  <text x="652" y="282" fill="#d4d4d4">MCP 12k</text>
+  <text x="634" y="304" fill="#56b6c2">■</text>
+  <text x="652" y="304" fill="#d4d4d4">ツール 10k</text>
+  <text x="634" y="326" fill="#7ec699">■</text>
+  <text x="652" y="326" fill="#d4d4d4">システム 8k</text>
+  <text x="634" y="348" fill="#e5c07b">■</text>
+  <text x="652" y="348" fill="#d4d4d4">メモリ 4k</text>
+  <text x="634" y="370" fill="#d19a66">■</text>
+  <text x="652" y="370" fill="#d4d4d4">スキル 3k</text>
+  <text x="634" y="392" fill="#9aa0ab">■</text>
+  <text x="652" y="392" fill="#d4d4d4">その他 19k</text>
+  <text x="632" y="436" fill="#858585">自動 compact まで あと 40k</text>
+  <text x="632" y="458" fill="#858585">概算</text>
+  <text x="682" y="458" fill="#b1b9f9">正確に数える</text>
+  <line x1="632" y1="497" x2="936" y2="497" stroke="#464a54"/>
+  <text x="632" y="546" fill="#858585">5時間枠</text>
+  <rect x="712" y="537" width="74" height="10" fill="#3a3d44"/><rect x="712" y="537" width="24" height="10" fill="#6fcf97"/>
+  <text x="806" y="546" fill="#6fcf97">32%</text>
+  <text x="838" y="546" fill="#858585">残り 3h10m</text>
+  <text x="632" y="568" fill="#858585">7日枠</text>
+  <rect x="712" y="559" width="74" height="10" fill="#3a3d44"/><rect x="712" y="559" width="10" height="10" fill="#6fcf97"/>
+  <text x="806" y="568" fill="#6fcf97">11%</text>
+  <text x="632" y="590" fill="#4fd6e0">main</text>
+  <text x="682" y="590" fill="#d4d4d4">未 commit 0</text>
+  <line x1="632" y1="629" x2="936" y2="629" stroke="#464a54"/>
+  <text x="632" y="678" fill="#4fd6e0" font-weight="bold">定型文</text>
+  <line x1="632" y1="682" x2="690" y2="682" stroke="#4fd6e0"/>
+  <text x="728" y="678" fill="#858585">履歴</text>
+  <text x="788" y="678" fill="#858585">Git</text>
+  <rect x="632" y="705" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
+  <text x="644" y="722" fill="#858585">新しい定型文を入力して Enter</text>
+  <text x="632" y="766" fill="#d4d4d4">残りのタスクは？</text>
+  <text x="632" y="788" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="788" fill="#ff6b80">× 削除</text>
+  <text x="772" y="788" fill="#555a65">▲ 上へ</text>
+  <text x="842" y="788" fill="#858585">▼ 下へ</text>
+  <text x="632" y="832" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
+  <text x="632" y="854" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
+  <text x="632" y="876" fill="#d4d4d4">して</text>
+  <text x="632" y="898" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="898" fill="#ff6b80">× 削除</text>
+  <text x="772" y="898" fill="#858585">▲ 上へ</text>
+  <text x="842" y="898" fill="#858585">▼ 下へ</text>
+  <text x="632" y="942" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
+  <text x="632" y="964" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="964" fill="#ff6b80">× 削除</text>
+  <text x="772" y="964" fill="#858585">▲ 上へ</text>
+  <text x="842" y="964" fill="#555a65">▼ 下へ</text>
 </svg>

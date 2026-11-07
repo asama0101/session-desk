@@ -16,6 +16,8 @@ const BASE: BandArgs = {
   stop: null,
   agents: { running: 0, rows: [], open: false },
   model: null,
+  effort: null,
+  cwd: null,
   context: null,
   breakdown: null,
   limits: [],
@@ -202,6 +204,31 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
   expect(bars.filter(n => n.props.dimColor === true && n.children[0] === '▬'.repeat(6))).toHaveLength(1)
   const narrow = draw({ limits: [limits[0]], columns: 30 })
   expect(find(narrow, n => n.type === 'Text' && n.children[0] === '▬'.repeat(3) && n.props.color !== undefined)).toHaveLength(1)
+})
+
+test('the header reads model / effort, with the effort coloured by level; no effort leaves just the model', async () => {
+  const head = (effort: string | null) => find(draw({ model: 'Opus 5.5', effort, context: CTX(50) }), n => n.type === 'Box' && textsOf(n)[0] === 'Opus 5.5')[0]
+  expect(textsOf(head('high'))).toEqual(['Opus 5.5', '/', 'high'])
+  const color = (effort: string) => find(head(effort), n => n.type === 'Text' && n.children[0] === effort)[0]
+  expect(color('high').props.color).toBe('#4fd6e0')
+  expect(color('low').props.color).toBe('#8a8f9c')
+  expect(color('medium').props.color).toBeUndefined()
+  expect(color('max').props.bold).toBe(true)
+  expect(color('weird').props.color).toBeUndefined()
+  expect(textsOf(head(null))).toEqual(['Opus 5.5'])
+  // モデルが分からなければ、effort だけは出さない。
+  expect(textsOf(draw({ model: null, effort: 'high', context: CTX(50) })).includes('high')).toBe(false)
+})
+
+test('the directory is a dim line right under the header; it keeps the tail when it is too long; null leaves it out', async () => {
+  const lines = (over: object) => textsOf(draw({ model: 'Opus 5.5', context: CTX(50), ...over }))
+  expect(lines({ cwd: 'D:/p' }).slice(0, 3)).toEqual(['Session', 'Opus 5.5', 'D:/p'])
+  expect(lines({ cwd: null })).not.toContain('D:/p')
+  const long = 'D:/claude/local-repo/session-desk/session-desk'
+  const cut = lines({ cwd: long, columns: 30 })[2] as string
+  expect(cut.startsWith('…')).toBe(true)
+  expect(cut.endsWith('session-desk')).toBe(true)
+  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === 'D:/p')[0].props.dimColor).toBe(true)
 })
 
 test('the branch name is bright cyan; the model is bold and coloured by family', async () => {

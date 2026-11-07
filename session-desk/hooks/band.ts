@@ -69,6 +69,24 @@ export function modelColor(name: string): string {
   return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
 }
 
+// effort の色（ステータスラインと同じ）。low は灰色、medium は通常、high は水色、xhigh は紫、max は太字の紫。
+export const EFFORT_COLORS: Record<string, string | null> = { low: '#8a8f9c', medium: null, high: '#4fd6e0', xhigh: '#d78bff', max: '#d78bff' }
+
+// 長い文字列を、末尾（いちばん大事な部分）を残して cells 桁に収める。全角は 2 桁と数える。収まらなければ、先頭を … にする。
+export function fitTail(text: string, cells: number): string {
+  const width = (ch: string) => ((ch.codePointAt(0) ?? 0) > 0x2e80 ? 2 : 1)
+  const chars = [...text]
+  let total = chars.reduce((sum, ch) => sum + width(ch), 0)
+  if (total <= cells) return text
+  let at = 0
+  while (at < chars.length && total + 1 > cells) {
+    total -= width(chars[at] as string)
+    at++
+  }
+
+  return `…${chars.slice(at).join('')}`
+}
+
 export function formatDuration(ms: number): string {
   const total = Math.floor(ms / 1000)
   const h = Math.floor(total / 3600)
