@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import {
+  adoptPr,
   buildRow,
   computeStages,
   defaultBranchOf,
@@ -11,6 +12,7 @@ import {
   parseAhead,
   parseCreatedAt,
   parseNewestReflogDate,
+  parsePrList,
   parseRefs,
 } from './branch'
 import type { Facts, Pr } from './branch'
@@ -195,4 +197,41 @@ test('buildRow builds stages and now; a default branch has no stages and reads �
   const main = buildRow('main', 'default', false, F0)
   expect(main.stages).toEqual([])
   expect(main.now).toEqual({ id: null, text: '既定' })
+})
+
+test('parsePrList returns null for non-JSON and an array for JSON', async () => {
+  expect(parsePrList('not json')).toBe(null)
+  expect(parsePrList('[]')).toEqual([])
+  expect(parsePrList('{"a":1}')).toBe(null)
+})
+
+test('adoptPr does not adopt an old merged PR that is unrelated to the local tip (a re-cut branch)', async () => {
+  const old = pr({ state: 'MERGED', mergedAt: '2026-10-01T00:00:00+09:00' })
+  expect(adoptPr([old], () => 'other')).toEqual({ pr: null, known: true })
+})
+
+test('adoptPr prefers an open PR; among several open PRs the newest wins', async () => {
+  const merged = pr({ number: 1, state: 'MERGED' })
+  const openOld = pr({ number: 2, createdAt: '2026-11-01T00:00:00+09:00' })
+  const openNew = pr({ number: 3, createdAt: '2026-11-03T00:00:00+09:00' })
+  expect(adoptPr([merged, openOld], () => 'ancestor').pr?.number).toBe(2)
+  expect(adoptPr([openOld, openNew, merged], () => 'ancestor').pr?.number).toBe(3)
+})
+
+test('adoptPr picks the newest of several merged PRs that match the local tip', async () => {
+  const a = pr({ number: 1, state: 'MERGED', createdAt: '2026-11-01T00:00:00+09:00' })
+  const b = pr({ number: 2, state: 'MERGED', createdAt: '2026-11-02T00:00:00+09:00' })
+  expect(adoptPr([a, b], () => 'ancestor').pr?.number).toBe(2)
+  expect(adoptPr([a, b], p => (p.number === 1 ? 'same' : 'other')).pr?.number).toBe(1)
+})
+
+test('adoptPr ignores PRs from forks', async () => {
+  expect(adoptPr([pr({ isCrossRepository: true })], () => 'same')).toEqual({ pr: null, known: true })
+})
+
+test('adoptPr reports unknown when a merged PR cannot be related and nothing else can be adopted', async () => {
+  expect(adoptPr([pr({ state: 'MERGED' })], () => 'unknown')).toEqual({ pr: null, known: false })
+  // 採れるものがあれば、不明な PR があっても known。
+  const open = pr({ number: 5 })
+  expect(adoptPr([pr({ state: 'MERGED' }), open], p => (p.number === 5 ? 'same' : 'unknown')).known).toBe(true)
 })

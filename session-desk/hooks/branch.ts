@@ -226,3 +226,31 @@ export function buildRow(name: string, kind: Kind, isCurrent: boolean, facts: Fa
 
   return { name, kind, isCurrent, facts, stages, now: nowOf(stages, facts) }
 }
+
+export function parsePrList(json: string): Pr[] | null {
+  try {
+    const value: unknown = JSON.parse(json)
+
+    return Array.isArray(value) ? (value as Pr[]) : null
+  } catch {
+    return null
+  }
+}
+
+const newestFirst = (a: Pr, b: Pr) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
+
+// prs は、同じブランチ名の PR。OPEN を優先し、なければ、ローカルの先頭と関係のある MERGED・CLOSED の最新を採る。
+export function adoptPr(prs: readonly Pr[], relation: (pr: Pr) => Relation): { pr: Pr | null; known: boolean } {
+  const own = prs.filter(p => !p.isCrossRepository)
+  const open = own.filter(p => p.state === 'OPEN').sort(newestFirst)[0]
+  if (open !== undefined) {
+    return { pr: open, known: true }
+  }
+  const closed = own.filter(p => p.state !== 'OPEN')
+  const related = closed.filter(p => ['same', 'ancestor'].includes(relation(p))).sort(newestFirst)[0]
+  if (related !== undefined) {
+    return { pr: related, known: true }
+  }
+
+  return { pr: null, known: !closed.some(p => relation(p) === 'unknown') }
+}
