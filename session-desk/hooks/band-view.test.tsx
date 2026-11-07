@@ -220,6 +220,14 @@ test('the header reads model / effort, with the effort coloured by level; no eff
   expect(textsOf(draw({ model: null, effort: 'high', context: CTX(50) })).includes('high')).toBe(false)
 })
 
+test('a raw model id is shown as the name people read, in the colour of its family', async () => {
+  const tree = draw({ model: 'claude-sonnet-5-5', effort: 'high', context: CTX(50) })
+  const name = find(tree, n => n.type === 'Text' && n.children[0] === 'Sonnet 5.5')[0]
+  expect(name).toBeDefined()
+  expect(name.props.color).toBe(modelColor('sonnet'))
+  expect(textsOf(tree)).not.toContain('claude-sonnet-5-5')
+})
+
 test('the directory is a dim line right under the header; it keeps the tail when it is too long; null leaves it out', async () => {
   const lines = (over: object) => textsOf(draw({ model: 'Opus 5.5', context: CTX(50), ...over }))
   expect(lines({ cwd: 'D:/p' }).slice(0, 3)).toEqual(['Session', 'Opus 5.5', 'D:/p'])

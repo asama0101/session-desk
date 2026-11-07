@@ -919,3 +919,92 @@ test('a failing /config read or session.cwd leaves the rest of the header alone'
   expect(t).not.toContain('/')
   await ui.unmount()
 })
+
+// ---- effort の探し方: /config の行 → CLAUDE_EFFORT → 設定ファイル ----
+
+function effortSources(on: any, opts: { rows?: unknown[]; env?: Record<string, string>; files?: Record<string, string> }) {
+  on('config.list', () => ({ value: opts.rows ?? [] }))
+  on('env.get', (_: any, e: any) => ({ value: opts.env?.[e.name] }))
+  on('fs.read', (_: any, e: any) => {
+    // Windows のエンジンは、パスの区切りを \ にそろえて渡す。
+    const text = opts.files?.[String(e.path).split(String.fromCharCode(92)).join('/')]
+    if (text === undefined) throw new Error('ENOENT')
+
+    return { value: text }
+  })
+}
+
+async function headerAfter($: any) {
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  const t = await draw(ui)
+  await ui.unmount()
+
+  return t
+}
+
+test('the header prettifies the model id: claude-test-model stays, claude-sonnet-5-5 reads Sonnet 5.5', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {})
+  const t = await headerAfter($)
+  expect(t).toContain('claude-test-model')
+})
+
+test('effort falls back to the CLAUDE_EFFORT variable when /config has no effort row', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, { env: { CLAUDE_EFFORT: 'xhigh' } })
+  expect(await headerAfter($)).toContain('xhigh')
+})
+
+test('effort then falls back to the settings files: project local, project, then user', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    env: { USERPROFILE: 'C:/Users/me' },
+    files: {
+      'D:/p/.claude/settings.json': JSON.stringify({ effortLevel: 'medium' }),
+      'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }),
+    },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('medium')
+  expect(t).not.toContain('low')
+})
+
+test('the user settings file is read when no project file has an effort; CLAUDE_CONFIG_DIR wins over the home folder', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    env: { USERPROFILE: 'C:/Users/me', CLAUDE_CONFIG_DIR: 'E:/cfg' },
+    files: { 'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }), 'E:/cfg/settings.json': JSON.stringify({ effortLevel: 'max' }) },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('max')
+  expect(t).not.toContain('low')
+})
+
+test('a /config row wins over the variable and the files; broken files and non-string values are skipped', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, {
+    rows: [{ key: 'effort', label: 'Effort', value: 'high' }],
+    env: { CLAUDE_EFFORT: 'low', USERPROFILE: 'C:/Users/me' },
+    files: { 'C:/Users/me/.claude/settings.json': JSON.stringify({ effortLevel: 'low' }) },
+  })
+  const t = await headerAfter($)
+  expect(t).toContain('high')
+  expect(t).not.toContain('low')
+})
+
+test('broken JSON or a non-string effortLevel leaves effort out', async ($, on) => {
+  engine(on)
+  fakeData(on)
+  effortSources(on, { env: { USERPROFILE: 'C:/Users/me' }, files: { 'C:/Users/me/.claude/settings.json': '{ not json', 'D:/p/.claude/settings.json': JSON.stringify({ effortLevel: 5 }) } })
+  const t = await headerAfter($)
+  expect(t).toContain('claude-test-model')
+  expect(t).not.toContain('/')
+})

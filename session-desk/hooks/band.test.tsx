@@ -11,6 +11,7 @@ import {
   formatTokens,
   limitRows,
   modelColor,
+  prettyModel,
   fitTail,
   EFFORT_COLORS,
   nextAgentsOpen,
@@ -227,4 +228,18 @@ test('EFFORT_COLORS: low grey, medium plain, high cyan, xhigh and max purple', a
   expect(EFFORT_COLORS.high).toBe(BRANCH_COLOR)
   expect(EFFORT_COLORS.low).not.toBe(EFFORT_COLORS.high)
   expect(EFFORT_COLORS.xhigh).toBe(EFFORT_COLORS.max)
+})
+
+test('prettyModel turns a model id into the name people read; unknown forms stay as they are', async () => {
+  expect(prettyModel('claude-sonnet-5-5')).toBe('Sonnet 5.5')
+  expect(prettyModel('claude-opus-5-5')).toBe('Opus 5.5')
+  expect(prettyModel('claude-fable-5-1')).toBe('Fable 5.1')
+  expect(prettyModel('claude-haiku-5-5')).toBe('Haiku 5.5')
+  expect(prettyModel('claude-opus-4-1-20250805')).toBe('Opus 4.1')
+  expect(prettyModel('claude-3-5-sonnet-20241022')).toBe('Sonnet 3.5')
+  expect(prettyModel('claude-sonnet-5-5[1m]')).toBe('Sonnet 5.5 (1M)')
+  expect(prettyModel('claude-sonnet-5')).toBe('Sonnet 5')
+  expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
+  expect(prettyModel('gpt-x')).toBe('gpt-x')
+  expect(prettyModel('')).toBe('')
 })

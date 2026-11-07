@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, formatDuration, formatTokens, modelColor, usageColor } from './band'
+import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, formatDuration, formatTokens, modelColor, prettyModel, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -292,7 +292,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
               {a.model !== null && (
                 <Box gap={1}>
                   <Text bold color={modelColor(a.model)}>
-                    {clean(a.model)}
+                    {clean(prettyModel(a.model))}
                   </Text>
                   {a.effort !== null && <Text dimColor>/</Text>}
                   {a.effort !== null && (

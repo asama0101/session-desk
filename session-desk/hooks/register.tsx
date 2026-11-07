@@ -83,6 +83,59 @@ const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
   { exact: false, detail: [] as string[] },
 )
+// 今の effort を、読めるところから順に探す。どれも読めなければ null（見出しに effort を出さない）。
+//   1. /config の行（名前に effort を含む行）
+//   2. 環境変数 CLAUDE_EFFORT
+//   3. 設定ファイルの effortLevel（プロジェクトの settings.local.json、settings.json、ユーザーの settings.json の順）。起動後に /effort で変えた値は、ここには載らない。
+async function readEffort($: any, cwd: string | null): Promise<string | null> {
+  const level = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null)
+  try {
+    const rows: { key: string; label: string; value: unknown }[] = await $.config.list()
+    const row = rows.find(r => /effort/i.test(r.key) || /effort/i.test(r.label))
+    const found = level(row?.value)
+    if (found !== null) {
+      return found
+    }
+  } catch {
+    // 次の手段へ。
+  }
+  try {
+    const found = level(await $.env.get('CLAUDE_EFFORT'))
+    if (found !== null) {
+      return found
+    }
+  } catch {
+    // 次の手段へ。
+  }
+  const files: string[] = []
+  const slash = (path: string) => path.split(String.fromCharCode(92)).join('/')
+  if (cwd !== null) {
+    files.push(`${slash(cwd)}/.claude/settings.local.json`, `${slash(cwd)}/.claude/settings.json`)
+  }
+  try {
+    const config = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? null
+    const home = config === null ? ((await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? null) : null
+    const user = config !== null ? slash(config) : home !== null ? `${slash(home)}/.claude` : null
+    if (user !== null) {
+      files.push(`${user}/settings.json`)
+    }
+  } catch {
+    // ユーザーの設定は探さない。
+  }
+  for (const file of files) {
+    try {
+      const found = level(JSON.parse(await $.fs.read(file)).effortLevel)
+      if (found !== null) {
+        return found
+      }
+    } catch {
+      // ファイルがない・読めない・JSON でないときは、次へ。
+    }
+  }
+
+  return null
+}
+
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
 const bandFetch = { running: false, again: false }
 // 実行中のツールの印。呼び出しごとに 1 つ増やす。
@@ -215,14 +268,6 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     } catch {
       // モデル名は出さない。
     }
-    let effort: string | null = null
-    try {
-      const rows: { key: string; label: string; value: unknown }[] = await $.config.list()
-      const row = rows.find(r => /effort/i.test(r.key) || /effort/i.test(r.label))
-      effort = typeof row?.value === 'string' && row.value !== '' ? row.value : null
-    } catch {
-      // effort は出さない。
-    }
     let cwd: string | null = null
     try {
       const dir = await $.session.cwd()
@@ -230,6 +275,7 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     } catch {
       // ディレクトリは出さない。
     }
+    const effort = await readEffort($, cwd)
     let list: { id: string; type: string; description: string; status: string }[] | null = null
     try {
       const got = await $.agent.list()

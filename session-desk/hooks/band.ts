@@ -69,6 +69,23 @@ export function modelColor(name: string): string {
   return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
 }
 
+// モデルの id（claude-sonnet-5-5 など）を、人が読む名前（Sonnet 5.5）にする。分からない形は、そのまま返す。末尾の [1m] は (1M) にする。
+export function prettyModel(id: string): string {
+  const ctx = /\[(\w+)\]$/.exec(id)
+  const base = id.replace(/\[\w+\]$/, '')
+  const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1)
+  const ver = (major: string, minor: string | undefined) => (minor === undefined ? major : `${major}.${minor}`)
+  const tail = ctx === null ? '' : ` (${(ctx[1] as string).toUpperCase()})`
+  // claude-sonnet-5-5、claude-opus-4-1-20250805
+  const next = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(base)
+  if (next !== null) return `${cap(next[1] as string)} ${ver(next[2] as string, next[3])}${tail}`
+  // 古い形: claude-3-5-sonnet-20241022
+  const old = /^claude-(\d+)(?:-(\d{1,2}))?-([a-z]+)(?:-\d{8})?$/.exec(base)
+  if (old !== null) return `${cap(old[3] as string)} ${ver(old[1] as string, old[2])}${tail}`
+
+  return id
+}
+
 // effort の色（ステータスラインと同じ）。low は灰色、medium は通常、high は水色、xhigh は紫、max は太字の紫。
 export const EFFORT_COLORS: Record<string, string | null> = { low: '#8a8f9c', medium: null, high: '#4fd6e0', xhigh: '#d78bff', max: '#d78bff' }
 
