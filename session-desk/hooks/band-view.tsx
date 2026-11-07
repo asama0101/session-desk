@@ -66,8 +66,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
     )
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
-  const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 4)
-  // バーは下半分のブロック（▄）で描き、文字 1 行の半分の太さにする（空きは暗い色）。
+  const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 2)
+  // バーは太い横線（━）で描く。文字の行の真ん中を通るので、横の文字と高さが揃う（空きは暗い色）。
   // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
   const limitBar = (percent: number, width: number) => {
     const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
@@ -75,8 +75,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
 
     return (
       <Box>
-        <Text color={level === 'normal' ? 'success' : level}>{'▄'.repeat(filled)}</Text>
-        <Text dimColor>{'▄'.repeat(width - filled)}</Text>
+        <Text color={level === 'normal' ? 'success' : level}>{'━'.repeat(filled)}</Text>
+        <Text dimColor>{'━'.repeat(width - filled)}</Text>
       </Box>
     )
   }
@@ -84,7 +84,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
     <Box>
       {barCells(parts, percent, width).map((c, i) => (
         <Text key={`${c.id}-${i}`} color={CATEGORY_COLORS[c.id]}>
-          {'▄'.repeat(c.cells)}
+          {'━'.repeat(c.cells)}
         </Text>
       ))}
     </Box>
@@ -240,8 +240,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
       </Box>
     )
 
-  // パネル全体が二重線の 1 枠。中は、状態・コンテキスト・利用枠とブランチ・タブ（と内容）・提案を、細い線で区切って並べる。提案の前だけ二重線。
-  const width = Math.max(8, (a.columns ?? RULE_WIDTH + 4) - 4)
+  // 外枠は無い。パネルは、状態・コンテキスト・利用枠とブランチ・タブ（と内容）・提案を、細い線で区切って並べる。提案の前だけ二重線。
+  const width = Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2)
   const thin = <Text color={LINE_COLOR}>{'─'.repeat(width)}</Text>
   const double = <Text color={LINE_COLOR}>{'═'.repeat(width)}</Text>
   const top = a.goal !== null || runLine !== null || agents !== null
@@ -279,7 +279,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   return (
     <Box flexDirection="column">
       {drawn && (
-        <Box flexDirection="column" borderStyle="double" borderColor={LINE_COLOR} paddingX={1}>
+        <Box flexDirection="column" paddingX={1}>
           {hasHead && (
             <Box gap={2}>
               <Text bold>Session</Text>
