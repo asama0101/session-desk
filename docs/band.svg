@@ -19,7 +19,7 @@
   <!-- 帯（丸角の枠） -->
   <rect x="418" y="12" width="524" height="462" rx="10" fill="none" stroke="#6b7080"/>
   <text x="434" y="38" fill="#d4d4d4" font-weight="bold">Session</text>
-  <text x="522" y="38" fill="#d4d4d4">Opus 5.5</text>
+  <text x="522" y="38" fill="#d78bff" font-weight="bold">Opus 5.5</text>
   <text x="434" y="64" fill="#858585">ゴール</text>
   <text x="500" y="64" fill="#d4d4d4">帯と選択肢を足す</text>
   <text x="434" y="88" fill="#858585">停止中</text>
@@ -32,7 +32,7 @@
   <line x1="434" y1="146" x2="926" y2="146" stroke="#3c3c3c" stroke-dasharray="3 4"/>
 
   <text x="434" y="168" fill="#858585">コンテキスト</text>
-  <text x="800" y="168" fill="#d4d4d4" font-weight="bold" text-anchor="end">58%</text>
+  <text x="800" y="168" fill="#6fcf97" font-weight="bold" text-anchor="end">58%</text>
   <text x="918" y="168" fill="#d4d4d4" text-anchor="end">116k / 200k</text>
   <rect x="434" y="176" width="484" height="16" fill="#55555a"/>
   <rect x="434.0" y="176" width="145.2" height="16" fill="#61afef"/>
@@ -60,7 +60,7 @@
   <text x="434" y="438" fill="#858585">7日枠</text>
   <rect x="514" y="426" width="108" height="12" fill="#55555a"/><rect x="514" y="426" width="12" height="12" fill="#6fcf97"/>
   <text x="640" y="438" fill="#d4d4d4">11%</text>
-  <text x="434" y="462" fill="#61afef">feat/band-frame</text><text x="600" y="462" fill="#d4d4d4">未 commit 3</text>
+  <text x="434" y="462" fill="#4fd6e0">feat/band-frame</text><text x="600" y="462" fill="#d4d4d4">未 commit 3</text>
 
   <!-- タブの行（帯の下、タブの内容の上） -->
   <text x="424" y="496" fill="#858585">定型文</text>

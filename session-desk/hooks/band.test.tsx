@@ -3,12 +3,14 @@ import { expect, test } from 'claude-code/testing'
 import {
   addTool,
   barCells,
+  BRANCH_COLOR,
   classifyCategory,
   compactIn,
   formatDuration,
   formatRemaining,
   formatTokens,
   limitRows,
+  modelColor,
   nextAgentsOpen,
   parseForkReply,
   removeTool,
@@ -157,6 +159,13 @@ test('parseForkReply: keeps at most 4 steps', async () => {
 test('parseForkReply: strips control codes and folds newlines in steps', async () => {
   const r = parseForkReply(JSON.stringify({ goal: 'A', steps: ['\u001b[31mx\u001b[0m', 'a\u202eb', 'a\nb'] }), null)
   expect(r.steps).toEqual(['x', 'ab', 'a b'])
+})
+
+test('modelColor: by family name, any case; the default is the branch colour', async () => {
+  const colors = ['opus', 'sonnet', 'haiku', 'fable'].map(k => modelColor(`Claude ${k.toUpperCase()} 5`))
+  expect(new Set(colors).size).toBe(4)
+  expect(modelColor('Opus 5.5')).toBe(modelColor('claude-opus-5-5'))
+  expect(modelColor('something else')).toBe(BRANCH_COLOR)
 })
 
 test('RunState: toolLabel shows the oldest tool and the extra count', async () => {

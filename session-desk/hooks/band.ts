@@ -50,6 +50,22 @@ export function usageColor(percent: number): 'normal' | 'warning' | 'error' {
   return 'normal'
 }
 
+// 帯の配色。ステータスラインの配色（モデルの系統ごとに色を分け、ブランチは水色）に合わせた、暗い背景で読める明るさの色。
+export const BRANCH_COLOR = '#4fd6e0'
+const MODEL_COLORS: [string, string][] = [
+  ['opus', '#d78bff'],
+  ['sonnet', '#4fd6e0'],
+  ['haiku', '#7db4ff'],
+  ['fable', '#7ff0f0'],
+]
+
+// モデル名に含まれる系統名（小文字で判定）で色を分ける。どれにも当たらないときは水色。
+export function modelColor(name: string): string {
+  const lower = name.toLowerCase()
+
+  return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
+}
+
 export function formatDuration(ms: number): string {
   const total = Math.floor(ms / 1000)
   const h = Math.floor(total / 3600)

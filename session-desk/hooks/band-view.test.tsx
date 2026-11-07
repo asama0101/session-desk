@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { BandArgs } from './band-view'
+import { BRANCH_COLOR, modelColor } from './band'
 import { renderBand } from './band-view'
 import { ESC, labelsOf, textsOf } from './test-kit'
 
@@ -108,7 +109,7 @@ test('model, context percent colors and tokens; null context omits the line', as
   expect(textsOf(c86)).toContain('86%')
   expect(colorOf(c86, '86%')).toBe('warning')
   expect(textsOf(c86)).toContain('860k / 1M')
-  expect(colorOf(draw({ context: CTX(79) }), '79%')).toBeUndefined()
+  expect(colorOf(draw({ context: CTX(79) }), '79%')).toBe('success')
   expect(colorOf(draw({ context: CTX(95) }), '95%')).toBe('error')
   expect(texts({ context: null }).join('')).not.toContain('コンテキスト')
   expect(JSON.stringify(c86)).toContain('█')
@@ -201,8 +202,13 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
   expect(find(narrow, n => n.type === 'Text' && n.children[0] === '█'.repeat(3))).toHaveLength(1)
 })
 
-test('the branch name is blue', async () => {
-  expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), 'main')).toBe('blue')
+test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
+  expect(colorOf(draw({ git: { branch: 'main', dirtyCount: 0 } }), 'main')).toBe(BRANCH_COLOR)
+  const model = (name: string) => find(draw({ model: name }), n => n.type === 'Text' && n.children[0] === name)[0]
+  expect(model('Opus 5.5').props.color).toBe(modelColor('opus'))
+  expect(model('Opus 5.5').props.bold).toBe(true)
+  expect(model('Sonnet 5.5').props.color).toBe(modelColor('sonnet'))
+  expect(model('x').props.color).toBe(BRANCH_COLOR)
 })
 
 test('the band sits in a round frame headed Session + model; sections are split by a rule', async () => {

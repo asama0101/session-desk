@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, CATEGORY_COLORS, formatDuration, formatTokens, usageColor } from './band'
+import { barCells, BRANCH_COLOR, CATEGORY_COLORS, formatDuration, formatTokens, modelColor, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -55,7 +55,11 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const pct = (percent: number, bold = false) => {
     const level = usageColor(percent)
 
-    return level === 'normal' ? <Text bold={bold}>{`${percent}%`}</Text> : <Text bold={bold} color={level}>{`${percent}%`}</Text>
+    return (
+      <Text bold={bold} color={level === 'normal' ? 'success' : level}>
+        {`${percent}%`}
+      </Text>
+    )
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
   const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 4)
@@ -197,7 +201,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const git =
     a.git !== null ? (
       <Box gap={2} flexWrap="wrap">
-        <Text color="blue">{a.git.branch === null ? '(detached)' : clean(a.git.branch)}</Text>
+        <Text color={BRANCH_COLOR}>{a.git.branch === null ? '(detached)' : clean(a.git.branch)}</Text>
         {a.git.dirtyCount !== null && <Text>{`未 commit ${a.git.dirtyCount}`}</Text>}
       </Box>
     ) : null
@@ -268,7 +272,11 @@ export function renderBand(ui: Ui, a: BandArgs) {
         <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
           <Box gap={2}>
             <Text bold>Session</Text>
-            {a.model !== null && <Text>{clean(a.model)}</Text>}
+            {a.model !== null && (
+            <Text bold color={modelColor(a.model)}>
+              {clean(a.model)}
+            </Text>
+          )}
           </Box>
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">

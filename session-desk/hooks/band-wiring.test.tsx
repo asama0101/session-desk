@@ -311,7 +311,7 @@ test('five_hour and seven_day show two limits', async ($, on) => {
   expect(t).toContain('3h 0m')
   const c = colorsOf(await ui.drawn())
   expect(c.find(x => x.text === '97%')?.color).toBe('error')
-  expect(c.find(x => x.text === '36%')?.color).toBeUndefined()
+  expect(c.find(x => x.text === '36%')?.color).toBe('success')
   await ui.unmount()
 })
 
