@@ -32,6 +32,8 @@ const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAUL
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 // 一覧の「もっと見る」を開いているか。タブごと。
+// 「リリースしますか」で「今はしない」を押した状態の key。状態（最新のタグ・未リリースの数）が変わると、また出る。
+const releaseSkip = atom({ plugin: 'session-desk', key: 'releaseSkip' } as const, null as string | null)
 const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
@@ -722,7 +724,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Button, Input, Text } = $.ui.resolve(e)
+    const { Box, Button, Input, Link, Text } = $.ui.resolve(e)
     const current = await read($, tab)
     const b = await read($, band)
     const u = await read($, usageView)
@@ -777,7 +779,7 @@ export const register: Register = on => {
       )
     } else if (current === 'git') {
       body = renderBranchTab(
-        { Box, Text, Button },
+        { Box, Text, Button, Link },
         {
           snapshot: (await read($, snapshot)) as Snapshot | null,
           selected: await read($, branchSel),
@@ -786,6 +788,7 @@ export const register: Register = on => {
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
           onNext: next => void pressNext($, next),
+          release: { skippedKey: await read($, releaseSkip), onSkip: key => void update($, releaseSkip, () => key).catch(() => {}) },
           busy: b.state === 'running',
         },
       )
