@@ -15,6 +15,7 @@ import {
   lastLineOf,
   nowOf,
   parseAhead,
+  parseDirtyCount,
   parseCreatedAt,
   parseNewestReflogDate,
   parsePrList,
@@ -398,4 +399,10 @@ test('tidyUrl keeps one slash for an scp-style absolute path; parseRemotes shows
   expect(parseRemotes('x\t\n')).toEqual([{ name: 'x', url: '（URL なし）' }])
   expect(parseRemotes('x\t (fetch)\n')).toEqual([{ name: 'x', url: '（URL なし）' }])
   expect(parseRemotes('origin\thttps://h/a.git (fetch)\nx\t\n').map(r => r.name)).toEqual(['origin', 'x'])
+})
+
+test('parseDirtyCount counts changed paths; the old path of a rename is not counted', async () => {
+  expect(parseDirtyCount('')).toBe(0)
+  expect(parseDirtyCount('M  a\0?? b\0')).toBe(2)
+  expect(parseDirtyCount('R  new\0old\0 M c\0')).toBe(2)
 })

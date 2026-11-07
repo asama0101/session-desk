@@ -8,6 +8,7 @@ import {
   lastLineOf,
   parseAhead,
   parseCreatedAt,
+  parseDirtyCount,
   parseNewestReflogDate,
   parsePrList,
   parseRefs,
@@ -276,6 +277,18 @@ export async function collect(
   const branches = heads.map(n => built.get(n)).filter((b): b is BranchRow => b !== undefined)
 
   return { cwd: opts.cwd, gitAt, ghAt, problem: null, ghProblem, prs, prCapped, baseRef, remotes, branches, warnings }
+}
+
+// 他のタブでも使う、軽い読み取り。git は 2 本だけ。status が取れなければ、Git のリポジトリとはみなさない。
+export async function collectLight(run: Run): Promise<{ isRepo: boolean; branch: string | null; dirtyCount: number | null }> {
+  const [head, status] = await Promise.all([git(run, 'symbolic-ref', '-q', 'HEAD'), git(run, 'status', '--porcelain=v1', '-z')])
+  if (!usable(status)) {
+    return { isRepo: false, branch: null, dirtyCount: null }
+  }
+  const HEADS = 'refs/heads/'
+  const ref = head.exitCode === 0 ? head.stdout.trim() : ''
+
+  return { isRepo: true, branch: ref.startsWith(HEADS) ? ref.slice(HEADS.length) : null, dirtyCount: parseDirtyCount(status.stdout) }
 }
 
 export async function detailOf(run: Run, name: string, baseRef: string | null): Promise<Detail> {

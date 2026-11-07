@@ -2,10 +2,14 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
+import { addTool, classifyCategory, compactIn, forkPrompt, isRiskyStep, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import type { AgentRow, CategoryId } from './band'
+import { renderBand } from './band-view'
+import type { BandArgs } from './band-view'
 import { actionOf, decideAnswer, remember } from './branch'
 import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
-import { collect, enrich, replaceIfSame } from './git'
+import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
   DEFAULT_QUICK,
@@ -28,6 +32,56 @@ const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAUL
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
+const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
+const band = atom(
+  { plugin: 'session-desk', key: 'band' } as const,
+  {
+    run: { startedAt: null as number | null, tools: [] as { id: number; name: string }[] },
+    state: null as 'running' | 'stopped' | null,
+    lastTurn: null as { durationMs: number; tokens: number } | null,
+    stop: null as 'error' | 'refusal' | 'aborted' | null,
+    goal: null as string | null,
+    reason: '',
+    steps: [] as string[],
+    confirming: null as number | null,
+    turnId: null as string | null,
+  },
+)
+const usageView = atom(
+  { plugin: 'session-desk', key: 'usageView' } as const,
+  {
+    model: null as string | null,
+    context: null as { percent: number; tokens: number | null; window: number | null } | null,
+    rateLimits: [] as { kind: string; percentUsed: number; resetsAt?: string }[],
+    breakdown: null as {
+      categories: { name: string; kind: string; tokens: number }[]
+      rawMaxTokens: number
+      autoCompactThreshold?: number
+      isAutoCompactEnabled: boolean
+      mcpTools: { name: string; tokens: number }[]
+      memoryFiles: { name: string; tokens: number }[]
+      skills: { name: string; tokens: number }[]
+    } | null,
+    // 「正確に数える」の内訳を出しているか。真のあいだは、概算の取得で breakdown を上書きしない。次の turn.start で戻す。
+    exactHeld: false,
+  },
+)
+const agentsView = atom(
+  { plugin: 'session-desk', key: 'agentsView' } as const,
+  { running: 0, rows: [] as AgentRow[], open: false, startedAt: {} as Record<string, number> },
+)
+const bandUi = atom(
+  { plugin: 'session-desk', key: 'bandUi' } as const,
+  { breakdown: false, exact: false, detail: [] as string[] },
+)
+// 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
+const bandFetch = { running: false, again: false }
+// 実行中のツールの印。呼び出しごとに 1 つ増やす。
+let toolSeq = 0
+// 自分の fork の印。id は走っている fork の番号（なければ null）。userSent は、fork の開始後に prompt.submit があったか（送信元は問わない）。
+// fork の最中の turn.start・turn.complete・tool.call は、prompt.submit のあとの turn.start までは帯に反映しない。session.start で戻す。
+const forkGuard = { seq: 0, id: null as number | null, userSent: false }
+const FORK_TIMEOUT_MS = 30_000
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 // yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
 const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
@@ -35,7 +89,7 @@ const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
   { id: 'history', label: '履歴' },
-  { id: 'branch', label: 'ブランチ' },
+  { id: 'git', label: 'Git' },
 ]
 
 // 定型文を変えたら、atom（画面）とストア（次のセッション）の両方に書く。`$` を受け取る関数は、トップレベルに置く。
@@ -66,13 +120,23 @@ type Desk = {
 
 const runOf = ($: any): Run => argv => $.process.run(argv, { timeoutMs: 15000, env: { LC_ALL: 'C' } })
 
-// ブランチタブが表示中のときだけ、git（と、withGh なら gh）を読んで snapshot を更新する。
-async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
-  if ((await read($, tab)) !== 'branch') {
-    return
+// 今のブランチと未 commit の数を読んで bandGit に書く。読んでいるあいだに作業フォルダが変わったら捨てる。
+async function refreshBand($: any, cwd: string): Promise<void> {
+  const light = await collectLight(runOf($))
+  if ((await $.session.cwd()) === cwd) {
+    await update($, bandGit, () => (light.isRepo ? { branch: light.branch, dirtyCount: light.dirtyCount } : null))
   }
+}
+
+// パネルが表示中のときだけ読む。Git タブ以外では、今のブランチと未 commit の数だけ。Git タブでは、git（と、withGh なら gh）を読んで snapshot も更新する。
+async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
   if (!panes.some(pane => pane.id === PANE && pane.isPlaced)) {
+    return
+  }
+  if ((await read($, tab)) !== 'git') {
+    await refreshBand($, await $.session.cwd())
+
     return
   }
   const cwd: string = await $.session.cwd()
@@ -115,6 +179,221 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
   await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
+  await refreshBand($, cwd)
+}
+
+// モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。
+// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。full が失敗したときだけ偽を返す。
+async function fetchBandData($: any, exact: boolean): Promise<boolean> {
+  let fullOk = exact
+  try {
+    let usage: any = null
+    try {
+      usage = await $.session.usage({ breakdown: exact ? 'full' : 'summary' })
+    } catch {
+      // 取れなければ、コンテキストと上限は出さない。正確に数える失敗のときは、概算で読み直して帯を保つ。
+      if (exact) {
+        fullOk = false
+        try {
+          usage = await $.session.usage({ breakdown: 'summary' })
+        } catch {
+          // 概算も取れないときは出さない。
+        }
+      }
+    }
+    let model: string | null = null
+    try {
+      const name = await $.session.model()
+      model = typeof name === 'string' && name !== '' ? name : null
+    } catch {
+      // モデル名は出さない。
+    }
+    let list: { id: string; type: string; description: string; status: string }[] | null = null
+    try {
+      const got = await $.agent.list()
+      list = Array.isArray(got) ? got : null
+    } catch {
+      // セッションに結び付いていないときは、一覧を出さない。
+    }
+
+    const ctx = usage?.context
+    const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
+    const b = ctx?.breakdown
+    // 正確に数えた内訳を出しているあいだは、概算の取得で内訳を上書きしない（書く時点の atom で決める）。
+    await update($, usageView, cur => ({
+      model,
+      context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
+      rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
+      exactHeld: fullOk || cur.exactHeld,
+      breakdown: !fullOk && cur.exactHeld
+        ? cur.breakdown
+        : b === undefined || b === null || !Array.isArray(b.categories)
+          ? null
+          : {
+              categories: b.categories.map((c: any) => ({ name: String(c.name), kind: String(c.kind), tokens: Number(c.tokens) || 0 })),
+              rawMaxTokens: b.rawMaxTokens,
+              autoCompactThreshold: b.autoCompactThreshold,
+              isAutoCompactEnabled: b.isAutoCompactEnabled === true,
+              // 1 件ずつの名前: MCP ツールは「サーバー / ツール」、メモリファイルは path、スキルは name。
+              mcpTools: (b.mcpTools ?? []).map((t: any) => ({ name: `${t.serverName} / ${t.name}`, tokens: Number(t.tokens) || 0 })),
+              memoryFiles: (b.memoryFiles ?? []).map((f: any) => ({ name: String(f.path), tokens: Number(f.tokens) || 0 })),
+              skills: (b.skills?.skillFrontmatter ?? []).map((k: any) => ({ name: String(k.name), tokens: Number(k.tokens) || 0 })),
+            },
+    }))
+
+    // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
+    await update($, agentsView, cur => {
+      const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
+      const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
+
+      return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
+    })
+  } catch {
+    // atom を更新できなくても、フックを失敗させない。
+  }
+
+  return fullOk || !exact
+}
+
+// 概算の取得を 1 本にまとめる。取得中に来た要求は、終わった直後の 1 回にまとめる（古い結果が新しい結果を上書きしない）。
+async function fetchSummary($: any): Promise<void> {
+  if (bandFetch.running) {
+    bandFetch.again = true
+
+    return
+  }
+  bandFetch.running = true
+  try {
+    do {
+      bandFetch.again = false
+      await fetchBandData($, false)
+    } while (bandFetch.again)
+  } finally {
+    bandFetch.running = false
+  }
+}
+
+// 取得は待たない。フックの結果に影響させない。
+function refetch($: any) {
+  void fetchSummary($).catch(() => {})
+}
+
+// 10 秒ごとの更新。パネルが置かれていないときは、帯の取得をしない（Git の更新は refreshNow が自分で確かめる）。
+async function tick($: any, desk: Desk): Promise<void> {
+  desk.refresher?.request(Date.now() >= desk.ghNextAt)
+  const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
+  if (panes.some(pane => pane.id === PANE && pane.isPlaced)) {
+    refetch($)
+  }
+}
+
+// 「正確に数える」: full で 1 回だけ読み、成功しても失敗しても exact を戻す。数えている間の押下は無視する。
+async function countExactly($: any) {
+  let mine = false
+  try {
+    await update($, bandUi, v => {
+      // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
+      mine = !v.exact
+
+      return mine ? { ...v, exact: true } : v
+    })
+  } catch {
+    return
+  }
+  if (!mine) {
+    return
+  }
+  try {
+    if (!(await fetchBandData($, true))) {
+      $.ui.toast('正確な数え直しに失敗しました')
+    }
+  } finally {
+    await update($, bandUi, v => ({ ...v, exact: false })).catch(() => {})
+  }
+}
+
+async function toggleBreakdown($: any) {
+  await update($, bandUi, v => ({ ...v, breakdown: !v.breakdown }))
+}
+
+async function toggleDetail($: any, id: string) {
+  await update($, bandUi, v => ({ ...v, detail: v.detail.includes(id) ? v.detail.filter(d => d !== id) : [...v.detail, id] }))
+}
+
+// サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
+async function toggleAgents($: any) {
+  const cur = await read($, agentsView)
+  await update($, agentsView, v => ({ ...v, open: !cur.open }))
+}
+
+// 内訳のカテゴリを、帯の色分けの区分ごとに合計する（空きは除く）。
+function partsOf(breakdown: { categories: { name: string; kind: string; tokens: number }[] } | null): { id: CategoryId; tokens: number }[] {
+  const sums = new Map<CategoryId, number>()
+  for (const c of breakdown?.categories ?? []) {
+    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
+    if (id !== 'free') {
+      sums.set(id, (sums.get(id) ?? 0) + c.tokens)
+    }
+  }
+
+  return [...sums].map(([id, tokens]) => ({ id, tokens }))
+}
+
+const CATEGORY_NAMES: Record<CategoryId, string> = {
+  messages: 'メッセージ',
+  mcp: 'MCP ツール',
+  systemTools: 'システムツール',
+  systemPrompt: 'システムプロンプト',
+  memory: 'メモリファイル',
+  skills: 'スキル',
+  other: 'その他',
+  free: '空き',
+}
+
+// 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
+function breakdownArgs(bd: any, ui: { breakdown: boolean; detail: string[] }, exact: boolean): BandArgs['breakdown'] {
+  if (bd === null) {
+    return null
+  }
+  if (!ui.breakdown) {
+    return { open: false, exact, rows: [], compactIn: null, threshold: null }
+  }
+  const sums = new Map<CategoryId, number>()
+  let used = 0
+  for (const c of bd.categories as { name: string; kind: string; tokens: number }[]) {
+    const id = classifyCategory({ name: c.name, kind: c.kind as 'used' | 'free' | 'buffer' | 'deferred' })
+    sums.set(id, (sums.get(id) ?? 0) + c.tokens)
+    used += c.kind === 'used' ? c.tokens : 0
+  }
+  const lists: Partial<Record<CategoryId, { name: string; tokens: number }[]>> = { mcp: bd.mcpTools, memory: bd.memoryFiles, skills: bd.skills }
+  const percentOf = (tokens: number) => {
+    const p = bd.rawMaxTokens > 0 ? (tokens / bd.rawMaxTokens) * 100 : 0
+
+    return p < 10 ? Math.round(p * 10) / 10 : Math.round(p)
+  }
+  const rows = [...sums]
+    .filter(([, tokens]) => tokens > 0)
+    .sort(([a, x], [b, y]) => (a === 'free' ? 1 : b === 'free' ? -1 : y - x))
+    .map(([id, tokens]) => {
+      const list = lists[id]
+
+      return {
+        id,
+        name: CATEGORY_NAMES[id],
+        tokens,
+        percent: percentOf(tokens),
+        detail: list !== undefined && list.length > 0 ? [...list].sort((p, q) => q.tokens - p.tokens) : null,
+        detailOpen: ui.detail.includes(id),
+      }
+    })
+
+  return {
+    open: true,
+    exact,
+    rows,
+    compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
+    threshold: bd.autoCompactThreshold ?? null,
+  }
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
@@ -170,9 +449,97 @@ async function answerAction($: any, action: Action, step: Step) {
   }
 }
 
+// ターンの終わりに 1 回だけ fork を呼び、ゴール・理由・選択肢を帯に書く。今のターンの結果でなければ捨てる。
+// 失敗（未回答・例外・解けない JSON）では何も書かず、前回のゴールを残す。トーストは出さない。
+async function askFork($: any, turnId: string): Promise<void> {
+  const id = ++forkGuard.seq
+  forkGuard.id = id
+  forkGuard.userSent = false
+  try {
+    const prevGoal = (await read($, band)).goal
+    // 費用を抑えるため、effort は low にする。
+    const req = { prompt: forkPrompt(prevGoal), effort: 'low' as const }
+    // 返らない fork で印が残らないように、30 秒で未回答として扱う（トーストは出さない）。
+    const stop = new AbortController()
+    let result: any
+    try {
+      result = await Promise.race([$.model.fork(req), $.clock.sleep(FORK_TIMEOUT_MS, { signal: stop.signal }).then(() => null)])
+    } finally {
+      stop.abort()
+    }
+    if (result?.isAnswered !== true) {
+      return
+    }
+    // 結果が出る前に次のプロンプトが送られていたら、消した選択肢を戻さないように捨てる。
+    if (forkGuard.id === id && forkGuard.userSent) {
+      return
+    }
+    const got = parseForkReply(String(result.text ?? ''), prevGoal)
+    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, confirming: null } : b))
+  } catch {
+    // 選択肢が出ないだけ。
+  } finally {
+    if (forkGuard.id === id) {
+      forkGuard.id = null
+    }
+  }
+}
+
+// 選択肢を押す。危険な語を含むものは、1 回目は確認を出す（confirmed で送る）。
+// 二度押しで 2 回送らないように、送る前に、書く時点の atom から選択肢を消す。
+async function pickStep($: any, i: number, confirmed: boolean) {
+  let sent: { text: string; steps: string[]; turnId: string | null } | null = null
+  await update($, band, b => {
+    // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
+    sent = null
+    const text = b.steps[i]
+    if (text === undefined || (confirmed && b.confirming !== i)) {
+      return b
+    }
+    if (!confirmed && isRiskyStep(text)) {
+      return { ...b, confirming: i }
+    }
+    sent = { text, steps: b.steps, turnId: b.turnId }
+
+    return { ...b, steps: [], confirming: null }
+  })
+  const s = sent as { text: string; steps: string[]; turnId: string | null } | null
+  if (s === null) {
+    return
+  }
+  stepSent.push(s.text)
+  $.prompt.submit({ text: s.text }).then(
+    () => {
+      // 自分の prompt.submit のフックが受けなかったときは、ここで履歴に載せる（二重には載せない）。
+      if (takeStepSent(s.text)) {
+        void update($, history, list => [...list, s.text]).catch(() => {})
+      }
+    },
+    () => {
+      takeStepSent(s.text)
+      void $.ui.toast('依頼を送れませんでした')
+      // 押し直せるように、同じターンのあいだなら選択肢を戻す。
+      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps } : b)).catch(() => {})
+    },
+  )
+}
+
+// 選択肢から送った文のうち、まだ履歴に載せていないもの。
+const stepSent: string[] = []
+
+// 待っている文を 1 つ取り除く。あれば真。
+function takeStepSent(text: string): boolean {
+  const at = stepSent.indexOf(text)
+  if (at >= 0) {
+    stepSent.splice(at, 1)
+  }
+
+  return at >= 0
+}
+
 async function selectTab($: any, desk: Desk, id: Tab) {
   await update($, tab, () => id)
-  if (id === 'branch') {
+  if (id === 'git') {
     // gh が失敗して間隔が延びている間は、タブを押しても gh は読み直さない（git は読み直す）。
     desk.refresher?.request(desk.ghFailures === 0 || Date.now() >= desk.ghNextAt)
   }
@@ -183,15 +550,87 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const tool = e.tool as string
-    if (!['Bash', 'Edit', 'Write'].includes(tool)) {
-      return next(e)
+    const id = ++toolSeq
+    // 帯に出して取り直すのは、メインのやり取りのツールだけ（サブエージェントのものと、自分の fork の最中は除く）。
+    // fork の最中でも、Git の更新の要求は出す。
+    const shown = forkGuard.id === null && (e as { agentId?: unknown }).agentId === undefined
+    if (shown) {
+      await update($, band, b => ({ ...b, run: addTool(b.run, id, tool) }))
+      refetch($)
     }
+    const refreshes = ['Bash', 'Edit', 'Write'].includes(tool)
     const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
 
-    return around(() => next(e), () => desk.refresher?.request(wantsGh(command)))
+    return around(
+      () => next(e),
+      () => {
+        if (refreshes) {
+          desk.refresher?.request(wantsGh(command))
+        }
+        if (shown) {
+          void update($, band, b => ({ ...b, run: removeTool(b.run, id) })).catch(() => {})
+        }
+      },
+    )
+  })
+
+  on('turn.start', async ($, e, next) => {
+    if (forkGuard.id !== null) {
+      // prompt.submit のあとの turn.start は、本物のターン。印を外して、ふつうに扱う。
+      if (!forkGuard.userSent || e.agentId !== undefined) {
+        return next(e)
+      }
+      forkGuard.id = null
+    }
+    if (e.agentId === undefined) {
+      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
+      // 正確に数えた内訳は、新しいターンでは古くなるので、概算に戻す。
+      await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false } : v)).catch(() => {})
+    }
+    refetch($)
+
+    return next(e)
+  })
+
+  on('agent.spawn', async ($, e, next) => {
+    const out = await next(e)
+    const agentId = (out as { agentId?: string }).agentId
+    if (agentId !== undefined) {
+      try {
+        await update($, agentsView, v => ({ ...v, startedAt: { ...v.startedAt, [agentId]: Date.now() } }))
+      } catch {
+        // 開始時刻を残せなくても、経過時間が出ないだけ。
+      }
+    }
+    refetch($)
+
+    return out
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (forkGuard.id !== null) {
+      return next(e)
+    }
+    if (e.agentId === undefined) {
+      const tokens = (e.usage?.input_tokens ?? 0) + (e.usage?.output_tokens ?? 0)
+      const stop = e.reason === 'answer' ? null : e.reason
+      await update($, band, b => ({ ...b, state: 'stopped', lastTurn: { durationMs: e.durationMs, tokens }, stop }))
+    }
+    refetch($)
+    const out = await next(e)
+    // ターンの完了を遅らせないように、fork は待たない。
+    if (e.agentId === undefined && e.reason === 'answer') {
+      void askFork($, e.turnId).catch(() => {})
+    }
+
+    return out
   })
 
   on('session.start', async ($, e, next) => {
+    forkGuard.id = null
+    forkGuard.userSent = false
+    bandFetch.running = false
+    bandFetch.again = false
     desk.timer?.cancel()
     desk.refresher = createRefresher({
       // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
@@ -203,7 +642,7 @@ export const register: Register = on => {
           () => {
             if (!desk.failed) {
               desk.failed = true
-              void $.ui.toast('ブランチタブを更新できませんでした')
+              void $.ui.toast('Git タブを更新できませんでした')
             }
           },
         ),
@@ -212,11 +651,12 @@ export const register: Register = on => {
     })
     try {
       desk.timer = $.clock.every(10_000, () => {
-        desk.refresher?.request(Date.now() >= desk.ghNextAt)
+        void tick($, desk).catch(() => {})
       })
     } catch {
       // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
     }
+    desk.refresher.request(false)
     void $.ui.open({ id: PANE, title: 'Session Desk' }).catch(() => {})
     try {
       const saved = parseQuick(await $.store.get(STORE_KEY))
@@ -235,7 +675,21 @@ export const register: Register = on => {
       e.origin?.kind === 'bridge' ||
       (e.origin?.kind === 'plugin' && e.origin.name === 'session-desk')
     if (byUser && e.text.trim() !== '') {
+      if (e.origin?.kind === 'plugin') {
+        takeStepSent(e.text)
+      }
       await update($, history, list => [...list, e.text])
+    }
+    // 自分の fork は prompt.submit を通らないので、fork の最中の送信は、どの送信元でも本物のターンの始まり。
+    if (forkGuard.id !== null && (e as { agentId?: unknown }).agentId === undefined) {
+      forkGuard.userSent = true
+    }
+    if (byUser) {
+      try {
+        await update($, band, b => ({ ...b, steps: [], confirming: null }))
+      } catch {
+        // 選択肢が残るだけ。
+      }
     }
 
     return next(e)
@@ -244,6 +698,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Button, Input, Text } = $.ui.resolve(e)
     const current = await read($, tab)
+    const b = await read($, band)
+    const u = await read($, usageView)
+    const ag = await read($, agentsView)
 
     let body
     if (current === 'history') {
@@ -288,7 +745,7 @@ export const register: Register = on => {
             })}
         </Box>
       )
-    } else if (current === 'branch') {
+    } else if (current === 'git') {
       const act = await read($, branchAct)
       body = renderBranchTab(
         { Box, Text, Button },
@@ -386,6 +843,22 @@ export const register: Register = on => {
             ),
           )}
         </Box>
+        {renderBand({ Box, Text, Button }, {
+          goal: b.goal,
+          run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
+          lastTurn: b.lastTurn,
+          stop: b.stop,
+          agents: { running: ag.running, rows: ag.rows, open: ag.open },
+          model: u.model,
+          context: u.context === null ? null : { ...u.context, parts: partsOf(u.breakdown) },
+          breakdown: breakdownArgs(u.breakdown, await read($, bandUi), u.exactHeld),
+          limits: limitRows(u.rateLimits, Date.now()),
+          git: await read($, bandGit),
+          // 実行中は選択肢を描かない。
+          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, confirming: b.confirming },
+          on: { toggleBreakdown: () => void toggleBreakdown($).catch(() => {}), toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
+          columns: e.props.bodyColumns,
+        })}
         {body}
       </Box>
     )

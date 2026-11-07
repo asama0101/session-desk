@@ -49,11 +49,15 @@ function reply(argv: string[]) {
 function engine(on: any, placed = true) {
   const calls: string[] = []
   const timers = { made: 0 }
-  const cfg = { cwd: 'D:/p', ghFail: false }
+  const cfg = { cwd: 'D:/p', ghFail: false, onRun: null as null | (() => void), onCwd: null as null | (() => void) }
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: placed }] }))
-  on('session.cwd', () => ({ value: cfg.cwd }))
+  on('session.cwd', () => {
+    cfg.onCwd?.()
+
+    return { value: cfg.cwd }
+  })
   // テストのエンジンは、周期を待たずに fn を呼び続ける。周期を拒否して、そこで止める（呼ばれた回数だけを数える）。
   on('clock.every', () => {
     timers.made++
@@ -63,6 +67,7 @@ function engine(on: any, placed = true) {
   on('clock.sleep', () => ({ value: undefined }))
   on('process.run', (_: any, e: any) => {
     calls.push(e.argv.join(' '))
+    cfg.onRun?.()
 
     const r = reply(e.argv)
 
@@ -77,25 +82,43 @@ const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', in
 const gh = (calls: string[]) => calls.filter(c => c.startsWith('gh ')).length
 const git = (calls: string[]) => calls.filter(c => c.startsWith('git ')).length
 
-test('pressing the ブランチ tab reads git and gh; the other tabs do not', async ($, on) => {
+const LIGHT = ['git --no-optional-locks symbolic-ref -q HEAD', 'git --no-optional-locks status --porcelain=v1 -z']
+
+test('pressing the ブランチ tab reads git and gh; the other tabs read only the branch and the status', async ($, on) => {
   const e = engine(on)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'tab-history' })
   await settle(e.calls)
-  expect(e.calls.length).toBe(0)
-  await ui.press({ key: 'tab-branch' })
+  expect(e.calls.slice().sort()).toEqual(LIGHT.slice().sort())
+  expect(e.calls.some(c => c.includes('for-each-ref'))).toBe(false)
+  expect(gh(e.calls)).toBe(0)
+  e.calls.length = 0
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(e.calls).toContain('git --no-optional-locks rev-parse --git-dir')
+  expect(e.calls.filter(c => c === LIGHT[0]).length).toBe(2)
+  expect(e.calls.filter(c => c === LIGHT[1]).length).toBe(2)
   expect(gh(e.calls)).toBe(1)
   await ui.unmount()
+})
+
+// bandGit の atom は、テストからは読めない。書く前に作業フォルダを読み直していること（取得のあとの cwd 確認）で確かめる。
+test('on another tab, the folder is checked again after the git reads, before bandGit is written', async ($, on) => {
+  const e = engine(on)
+  const order: string[] = []
+  e.cfg.onCwd = () => order.push('cwd')
+  e.cfg.onRun = () => order.push('run')
+  await start($)
+  await settle(e.calls)
+  expect(order.join(' ')).toBe('cwd run run cwd')
 })
 
 test('nothing is read while the panel is not placed, even on the ブランチ tab', async ($, on) => {
   const e = engine(on, false)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(e.calls.length).toBe(0)
   await ui.unmount()
@@ -105,7 +128,7 @@ test('a Bash tool call refreshes git; only a command with gh or git push refresh
   const e = engine(on)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   const gitBefore = git(e.calls)
   expect(gh(e.calls)).toBe(1)
@@ -123,7 +146,7 @@ test('a tool other than Bash, Edit or Write does not refresh', async ($, on) => 
   const e = engine(on)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   const before = e.calls.length
   await $.tool.call({ tool: 'Read', file_path: 'x' })
@@ -159,7 +182,7 @@ test('when a refresh throws, the user is told once instead of the tab silently s
   on('tool.call', () => ({ result: {} }))
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await flush()
   await flush()
   expect(toasts.length).toBe(1)
@@ -175,7 +198,7 @@ test('moving to another folder resets the gh backoff and reads gh again', async 
   e.cfg.ghFail = true
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(gh(e.calls)).toBe(1)
   e.cfg.cwd = 'D:/other'
@@ -191,12 +214,12 @@ test('pressing the ブランチ tab again does not call gh while it is backing o
   e.cfg.ghFail = true
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(gh(e.calls)).toBe(1)
   const gitBefore = git(e.calls)
   await ui.press({ key: 'tab-history' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(gh(e.calls)).toBe(1)
   expect(git(e.calls)).toBeGreaterThan(gitBefore)
@@ -207,11 +230,11 @@ test('pressing the ブランチ tab again reads gh again when gh last succeeded'
   const e = engine(on)
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(gh(e.calls)).toBe(1)
   await ui.press({ key: 'tab-history' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(e.calls)
   expect(gh(e.calls)).toBe(2)
   await ui.unmount()

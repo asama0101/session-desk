@@ -1,4 +1,4 @@
-export type Tab = 'history' | 'quick' | 'branch'
+export type Tab = 'history' | 'quick' | 'git'
 
 declare module 'claude-code' {
   interface PluginState {
@@ -9,6 +9,40 @@ declare module 'claude-code' {
       selected: number | null
       // 形は hooks/git.ts の Snapshot。契約は自己完結（import 不可）でなければならないので unknown とし、使う側で型を付ける。
       snapshot: unknown
+      bandGit: { branch: string | null; dirtyCount: number | null } | null
+      band: {
+        run: { startedAt: number | null; tools: { id: number; name: string }[] }
+        state: 'running' | 'stopped' | null
+        lastTurn: { durationMs: number; tokens: number } | null
+        stop: 'error' | 'refusal' | 'aborted' | null
+        goal: string | null
+        reason: string
+        steps: string[]
+        confirming: number | null
+        turnId: string | null
+      }
+      usageView: {
+        model: string | null
+        context: { percent: number; tokens: number | null; window: number | null } | null
+        rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[]
+        breakdown: {
+          categories: { name: string; kind: string; tokens: number }[]
+          rawMaxTokens: number
+          autoCompactThreshold?: number
+          isAutoCompactEnabled: boolean
+          mcpTools: { name: string; tokens: number }[]
+          memoryFiles: { name: string; tokens: number }[]
+          skills: { name: string; tokens: number }[]
+        } | null
+        exactHeld: boolean
+      }
+      agentsView: {
+        running: number
+        rows: { id: string; type: string; description: string; state: 'running' | 'waiting' | 'done'; elapsedMs: number | null }[]
+        open: boolean
+        startedAt: Record<string, number>
+      }
+      bandUi: { breakdown: boolean; exact: boolean; detail: string[] }
       branchSel: string | null
       branchAct: { dismissed: string[]; confirm: string | null }
     }

@@ -80,7 +80,7 @@ function engine(on: any) {
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
 async function open($: any, calls: string[]) {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(calls)
 
   return ui

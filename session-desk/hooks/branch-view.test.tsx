@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { formatAt } from './branch-view'
+import { formatAt, renderBranchTab } from './branch-view'
 import { textsOf } from './test-kit'
 
 const PANE = {
@@ -121,7 +121,7 @@ function engine(on: any, over: Over = {}) {
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
 async function open($: any, calls: string[], pane: object = PANE) {
   const ui = await $.ui.mount({ ...pane, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await settle(calls)
 
   return ui
@@ -222,7 +222,7 @@ test('until the first read finishes the tab reads 読み込み中', async ($, on
   const e = engine(on, { hang: true })
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await ui.press({ key: 'tab-branch' })
+  await ui.press({ key: 'tab-git' })
   await flush()
   expect(await texts(ui)).toContain('読み込み中')
   expect(e.calls.length).toBeGreaterThan(0)
@@ -243,7 +243,11 @@ test('the remotes are listed under the heading with tidy URLs', async ($, on) =>
   const e = engine(on)
   await start($)
   const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('origin  github.com/a/b')
+  {
+    const lines = await texts(ui)
+    expect(lines).toContain('origin')
+    expect(lines).toContain('github.com/a/b')
+  }
   await ui.unmount()
 })
 
@@ -257,8 +261,10 @@ test('several remotes are all listed, and credentials in a URL never reach the s
   await start($)
   const ui = await open($, e.calls)
   const lines = await texts(ui)
-  expect(lines).toContain('origin  github.com/a/b')
-  expect(lines).toContain('upstream  github.com/c/d')
+  expect(lines).toContain('origin')
+  expect(lines).toContain('github.com/a/b')
+  expect(lines).toContain('upstream')
+  expect(lines).toContain('github.com/c/d')
   expect(JSON.stringify(await ui.drawn())).not.toContain('SECRET')
   await ui.unmount()
 })
@@ -280,7 +286,8 @@ test('with only a remote other than origin the screen lists it and adds an origi
   await start($)
   const ui = await open($, e.calls)
   const lines = await texts(ui)
-  expect(lines).toContain('upstream  github.com/c/d')
+  expect(lines).toContain('upstream')
+  expect(lines).toContain('github.com/c/d')
   expect(lines).toContain('origin なし')
   await ui.unmount()
 })
@@ -507,10 +514,12 @@ test('yes/no: the second delete confirmation can wrap in a narrow panel', async 
   const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
   await start($)
   const ui = await open($, e.calls)
-  expect(JSON.stringify(await ui.drawn())).not.toContain('"flexWrap":"wrap"')
+  // 帯の行も折り返すので、数が増えたかで確かめる。
+  const wraps = async () => JSON.stringify(await ui.drawn()).split('"flexWrap":"wrap"').length
+  const before = await wraps()
   await pressText(ui, 'はい')
   await flush()
-  expect(JSON.stringify(await ui.drawn())).toContain('"flexWrap":"wrap"')
+  expect(await wraps()).toBeGreaterThan(before)
   await ui.unmount()
 })
 
@@ -524,4 +533,34 @@ test('yes/no: after a failed send the question comes back, so it can be answered
   expect(e.toasts).toEqual(['依頼を送れませんでした'])
   expect(await hasText(ui, 'はい')).toBe(true)
   await ui.unmount()
+})
+
+test('remote line shows the origin name and the URL in separate texts', async ($, on) => {
+  const e = engine(on, { remote: { stdout: 'origin\tgithub.com/a/b (fetch)\norigin\tgithub.com/a/b (push)\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('origin')
+  expect(lines).toContain('github.com/a/b')
+  await ui.unmount()
+})
+
+test('a token in a remote URL never reaches the screen', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const tree = renderBranchTab(ui, {
+    snapshot: {
+      problem: null,
+      branches: [],
+      remotes: [{ name: 'origin', url: 'https://user:tok123@github.com/a/b.git' }],
+      warnings: [],
+      gitAt: '00:00:00',
+      ghAt: null,
+    } as any,
+    selected: null,
+    columns: 80,
+    offsetMin: 0,
+    onSelect() {},
+    act: { dismissed: [], confirm: null, onYes() {}, onNo() {}, onConfirm() {} },
+  })
+  expect(JSON.stringify(tree)).not.toContain('tok123')
 })

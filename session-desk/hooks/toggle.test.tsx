@@ -14,6 +14,21 @@ const BAND = {
   },
 } as const
 
+// サイドパネル（Pane）を mount するときの引数。
+const PANE = {
+  plugin: 'session-desk',
+  component: 'Pane',
+  requestId: 'session-desk',
+  props: {
+    title: 'Session Desk',
+    isFocused: false,
+    bodyColumns: 80,
+    placement: 'dock',
+    scroll: { offset: 0, bodyRows: 30 },
+    view: {},
+  },
+} as const
+
 type FakePane = { id: string; title: string; isShown: boolean; isFocused: boolean; isPlaced: boolean }
 const pane = (isPlaced: boolean): FakePane => ({ id: 'session-desk', title: 'Session Desk', isShown: true, isFocused: false, isPlaced })
 
@@ -77,5 +92,14 @@ test('the band yields to a survey', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /^engine$/ })).toBeDefined()
   expect(await ui.find({ key: 'panel-toggle' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('tabs are ordered quick, history, git', async ($, on) => {
+  fakeEngine(on, [])
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const json = JSON.stringify(await ui.drawn())
+  const labels = [...json.matchAll(/"key":"tab-[a-z]+"[^{}]*?"label":"([^"]*)"|"label":"([^"]*)"[^{}]*?"key":"tab-[a-z]+"/g)].map(m => m[1] ?? m[2])
+  expect(labels).toEqual(['▸ 定型文', '履歴', 'Git'])
   await ui.unmount()
 })

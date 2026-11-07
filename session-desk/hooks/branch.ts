@@ -85,6 +85,24 @@ export function isDirty(porcelainZ: string): boolean {
   return porcelainZ !== ''
 }
 
+// 変更のあるパスの数。改名・コピーの項目は、直後の NUL 区切りに旧パスが続くので、それは数えない。
+export function parseDirtyCount(porcelainZ: string): number {
+  const fields = porcelainZ.split('\0')
+  let count = 0
+  for (let i = 0; i < fields.length; i++) {
+    const entry = fields[i] ?? ''
+    if (entry === '') {
+      continue
+    }
+    count++
+    if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') {
+      i++
+    }
+  }
+
+  return count
+}
+
 export function defaultBranchOf(symbolicRef: string | null, heads: readonly string[]): string | null {
   const prefix = 'refs/remotes/origin/'
   const ref = symbolicRef?.trim() ?? ''

@@ -2,7 +2,7 @@
 
 export const ESC = String.fromCharCode(27)
 
-type Node = { type?: string; props?: { key?: string }; children?: unknown[] }
+type Node = { type?: string; props?: { key?: string; label?: string }; children?: unknown[] }
 
 // 描画された木から、Text の中身（文字列の子）を、描かれた順に集める。ボタンの label と、ボタンの中の Text（色つきの記号）は含まない。
 export function textsOf(tree: unknown): string[] {
@@ -18,6 +18,22 @@ export function textsOf(tree: unknown): string[] {
       }
     } else if (typeof child === 'object' && child !== null) {
       found.push(...textsOf(child))
+    }
+  }
+
+  return found
+}
+
+// 描画された木から、Button の label を、描かれた順に集める（textsOf と同じ走査）。
+export function labelsOf(tree: unknown): string[] {
+  const node = tree as Node
+  const found: string[] = []
+  if (node.type === 'Button' && typeof node.props?.label === 'string') {
+    found.push(node.props.label)
+  }
+  for (const child of node.children ?? []) {
+    if (typeof child === 'object' && child !== null) {
+      found.push(...labelsOf(child))
     }
   }
 
