@@ -16,6 +16,8 @@ const BASE: BandArgs = {
   stop: null,
   agents: { running: 0, rows: [], open: false },
   model: null,
+  effort: null,
+  cwd: null,
   context: null,
   breakdown: null,
   limits: [],
@@ -107,12 +109,12 @@ test('model, context percent colors and tokens; null context omits the line', as
   expect(texts({ model: 'Opus 5.5' })).toContain('Opus 5.5')
   const c86 = draw({ context: CTX(86) })
   expect(textsOf(c86)).toContain('86%')
-  expect(colorOf(c86, '86%')).toBe('warning')
+  expect(colorOf(c86, '86%')).toBe('error')
   expect(textsOf(c86)).toContain('860k / 1M')
-  expect(colorOf(draw({ context: CTX(79) }), '79%')).toBe('success')
-  expect(colorOf(draw({ context: CTX(95) }), '95%')).toBe('error')
+  expect(colorOf(draw({ context: CTX(59) }), '59%')).toBe('success')
+  expect(colorOf(draw({ context: CTX(60) }), '60%')).toBe('warning')
   expect(texts({ context: null }).join('')).not.toContain('コンテキスト')
-  expect(JSON.stringify(c86)).toContain('▬')
+  expect(JSON.stringify(c86)).toContain('█')
 })
 
 test('limits, git, and omitted lines', async () => {
@@ -157,7 +159,7 @@ test('breakdown legend is always drawn: rows, 概算, exact button, details', as
   // 順序: バー、凡例、compact の行、概算
   const flat = JSON.stringify(draw({ context: CTX(86), breakdown: BREAKDOWN() }))
   const at = (w: string) => flat.indexOf(w)
-  expect(at('▬')).toBeLessThan(at('Messages'))
+  expect(at('█')).toBeLessThan(at('Messages'))
   expect(at('MCP tools')).toBeLessThan(at('自動 compact まで'))
   expect(at('自動 compact まで')).toBeLessThan(at('概算'))
   expect(at('概算')).toBeLessThan(at('band-exact'))
@@ -172,7 +174,7 @@ test('an exact breakdown says 正確 instead of 概算, and the button stays', a
 
 test('the context bar fills the width: columns - 2 cells (min 8), 24 when columns is unknown', async () => {
   const cells = (tree: Node) =>
-    find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^▬+$/.test(n.children[0] as string)).reduce(
+    find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^█+$/.test(n.children[0] as string)).reduce(
       (sum, n) => sum + (n.children[0] as string).length,
       0,
     )
@@ -190,18 +192,43 @@ test('the context numbers sit at the right end of the label row', async () => {
 test('limits draw a bar each: filled by percent, green / yellow / red', async () => {
   const limits = [
     { label: '5時間枠', percent: 50, remaining: null },
-    { label: '7日枠', percent: 85, remaining: null },
-    { label: '日', percent: 96, remaining: null },
+    { label: '7日枠', percent: 65, remaining: null },
+    { label: '日', percent: 85, remaining: null },
   ]
   const tree = draw({ limits })
   // バーは横長の四角（▬）。塗った分は色つき、空きは dimColor。
   const bars = find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^▬+$/.test(n.children[0] as string))
   const fills = bars.filter(n => n.props.color !== undefined)
-  expect(fills.map(n => (n.children[0] as string).length)).toEqual([6, 10, 12])
+  expect(fills.map(n => (n.children[0] as string).length)).toEqual([6, 8, 10])
   expect(fills.map(n => n.props.color)).toEqual(['success', 'warning', 'error'])
   expect(bars.filter(n => n.props.dimColor === true && n.children[0] === '▬'.repeat(6))).toHaveLength(1)
   const narrow = draw({ limits: [limits[0]], columns: 30 })
   expect(find(narrow, n => n.type === 'Text' && n.children[0] === '▬'.repeat(3) && n.props.color !== undefined)).toHaveLength(1)
+})
+
+test('the header reads model / effort, with the effort coloured by level; no effort leaves just the model', async () => {
+  const head = (effort: string | null) => find(draw({ model: 'Opus 5.5', effort, context: CTX(50) }), n => n.type === 'Box' && textsOf(n)[0] === 'Opus 5.5')[0]
+  expect(textsOf(head('high'))).toEqual(['Opus 5.5', '/', 'high'])
+  const color = (effort: string) => find(head(effort), n => n.type === 'Text' && n.children[0] === effort)[0]
+  expect(color('high').props.color).toBe('#4fd6e0')
+  expect(color('low').props.color).toBe('#8a8f9c')
+  expect(color('medium').props.color).toBeUndefined()
+  expect(color('max').props.bold).toBe(true)
+  expect(color('weird').props.color).toBeUndefined()
+  expect(textsOf(head(null))).toEqual(['Opus 5.5'])
+  // モデルが分からなければ、effort だけは出さない。
+  expect(textsOf(draw({ model: null, effort: 'high', context: CTX(50) })).includes('high')).toBe(false)
+})
+
+test('the directory is a dim line right under the header; it keeps the tail when it is too long; null leaves it out', async () => {
+  const lines = (over: object) => textsOf(draw({ model: 'Opus 5.5', context: CTX(50), ...over }))
+  expect(lines({ cwd: 'D:/p' }).slice(0, 3)).toEqual(['Session', 'Opus 5.5', 'D:/p'])
+  expect(lines({ cwd: null })).not.toContain('D:/p')
+  const long = 'D:/claude/local-repo/session-desk/session-desk'
+  const cut = lines({ cwd: long, columns: 30 })[2] as string
+  expect(cut.startsWith('…')).toBe(true)
+  expect(cut.endsWith('session-desk')).toBe(true)
+  expect(find(draw({ model: 'Opus 5.5', context: CTX(50), cwd: 'D:/p' }), n => n.type === 'Text' && n.children[0] === 'D:/p')[0].props.dimColor).toBe(true)
 })
 
 test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
@@ -240,12 +267,20 @@ test('every rule has one blank row above and below it', async () => {
   for (const r of rules) expect(r.props.marginY).toBe(1)
 })
 
-test('the legend sits right under the bar; the compact line is one blank row below the legend', async () => {
+test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
   const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
   const gaps = find(tree, n => n.props?.marginTop === 1)
-  expect(gaps).toHaveLength(1)
-  expect(textsOf(gaps[0])).toContain('概算')
-  expect(textsOf(gaps[0])).not.toContain('Messages')
+  expect(gaps).toHaveLength(2)
+  expect(textsOf(gaps[0])).toContain('Messages')
+  expect(textsOf(gaps[1])).toContain('概算')
+})
+
+test('the percent and the tokens text take the usage colour: green under 60, yellow from 60, red from 80', async () => {
+  for (const [percent, color] of [[59, 'success'], [60, 'warning'], [79, 'warning'], [80, 'error'], [95, 'error']] as const) {
+    const tree = draw({ context: CTX(percent) })
+    expect(colorOf(tree, `${percent}%`)).toBe(color)
+    expect(colorOf(tree, '860k / 1M')).toBe(color)
+  }
 })
 
 test('detail closed hides the per-item rows', async () => {

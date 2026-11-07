@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, BRANCH_COLOR, CATEGORY_COLORS, formatDuration, formatTokens, modelColor, usageColor } from './band'
+import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, formatDuration, formatTokens, modelColor, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -12,6 +12,10 @@ export type BandArgs = {
   stop: 'error' | 'refusal' | 'aborted' | null
   agents: { running: number; rows: AgentRow[]; open: boolean }
   model: string | null
+  // 今のモデルの effort（low・medium・high・xhigh・max など）。読めなければ null。
+  effort: string | null
+  // セッションのディレクトリ。読めなければ null。
+  cwd: string | null
   context: { percent: number; tokens: number | null; window: number | null; parts: { id: CategoryId; tokens: number }[] } | null
   breakdown: {
     // 「正確に数える」の結果を出しているとき真（「概算」の代わりに「正確」と出す）。
@@ -67,7 +71,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
   const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 2)
-  // バーは横長の四角（▬）で描く。文字の行の真ん中にあり、横の文字と高さが揃う。細すぎず、行の半分ほどの太さ（空きは暗い色）。
+  // コンテキストのバーは、全角の塗りつぶし（█）で描く。行いっぱいの高さで、上下の真ん中に揃う（▄ のように下へ寄らない）。利用枠のバーは、行の半分ほどの横長の四角（▬）。細すぎず、行の半分ほどの太さ（空きは暗い色）。
   // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
   const limitBar = (percent: number, width: number) => {
     const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
@@ -84,7 +88,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
     <Box>
       {barCells(parts, percent, width).map((c, i) => (
         <Text key={`${c.id}-${i}`} color={CATEGORY_COLORS[c.id]}>
-          {'▬'.repeat(c.cells)}
+          {'█'.repeat(c.cells)}
         </Text>
       ))}
     </Box>
@@ -138,13 +142,15 @@ export function renderBand(ui: Ui, a: BandArgs) {
             <Text dimColor>コンテキスト</Text>
             <Box gap={2}>
               {pct(ctx.percent, true)}
-              {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && <Text>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>}
+              {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && (
+                <Text color={usageColor(ctx.percent) === 'normal' ? 'success' : usageColor(ctx.percent)}>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>
+              )}
             </Box>
           </Box>
         )}
         {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
-          <Box flexDirection="column">
+          <Box flexDirection="column" marginTop={1}>
             <Box flexDirection="column">
               {bd.rows.map(row => (
                 <Box key={`bd-${row.id}`} gap={1}>
@@ -284,12 +290,21 @@ export function renderBand(ui: Ui, a: BandArgs) {
             <Box gap={2}>
               <Text bold>Session</Text>
               {a.model !== null && (
-                <Text bold color={modelColor(a.model)}>
-                  {clean(a.model)}
-                </Text>
+                <Box gap={1}>
+                  <Text bold color={modelColor(a.model)}>
+                    {clean(a.model)}
+                  </Text>
+                  {a.effort !== null && <Text dimColor>/</Text>}
+                  {a.effort !== null && (
+                    <Text bold={a.effort.toLowerCase() === 'max'} color={EFFORT_COLORS[a.effort.toLowerCase()] ?? undefined}>
+                      {clean(a.effort)}
+                    </Text>
+                  )}
+                </Box>
               )}
             </Box>
           )}
+          {hasHead && a.cwd !== null && <Text dimColor>{clean(fitTail(a.cwd, Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2)))}</Text>}
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">
               {n > 0 && <Box marginY={1}>{thin}</Box>}

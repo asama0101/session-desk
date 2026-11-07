@@ -43,10 +43,10 @@ export function classifyCategory(c: { name: string; kind: 'used' | 'free' | 'buf
 
 // ---- 整形 ----
 
-// 使用率の数字の色。80% 以上で黄、95% 以上で赤。
+// 使用率の色（ステータスラインと同じ境目）。60% 未満は通常（緑）、60% 以上で黄、80% 以上で赤。
 export function usageColor(percent: number): 'normal' | 'warning' | 'error' {
-  if (percent >= 95) return 'error'
-  if (percent >= 80) return 'warning'
+  if (percent >= 80) return 'error'
+  if (percent >= 60) return 'warning'
   return 'normal'
 }
 
@@ -67,6 +67,24 @@ export function modelColor(name: string): string {
   const lower = name.toLowerCase()
 
   return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
+}
+
+// effort の色（ステータスラインと同じ）。low は灰色、medium は通常、high は水色、xhigh は紫、max は太字の紫。
+export const EFFORT_COLORS: Record<string, string | null> = { low: '#8a8f9c', medium: null, high: '#4fd6e0', xhigh: '#d78bff', max: '#d78bff' }
+
+// 長い文字列を、末尾（いちばん大事な部分）を残して cells 桁に収める。全角は 2 桁と数える。収まらなければ、先頭を … にする。
+export function fitTail(text: string, cells: number): string {
+  const width = (ch: string) => ((ch.codePointAt(0) ?? 0) > 0x2e80 ? 2 : 1)
+  const chars = [...text]
+  let total = chars.reduce((sum, ch) => sum + width(ch), 0)
+  if (total <= cells) return text
+  let at = 0
+  while (at < chars.length && total + 1 > cells) {
+    total -= width(chars[at] as string)
+    at++
+  }
+
+  return `…${chars.slice(at).join('')}`
 }
 
 export function formatDuration(ms: number): string {

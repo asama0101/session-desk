@@ -57,6 +57,9 @@ const usageView = atom(
   { plugin: 'session-desk', key: 'usageView' } as const,
   {
     model: null as string | null,
+    // 今のモデルの effort（/config の行から読む。読めなければ null）と、セッションのディレクトリ。
+    effort: null as string | null,
+    cwd: null as string | null,
     context: null as { percent: number; tokens: number | null; window: number | null } | null,
     rateLimits: [] as { kind: string; percentUsed: number; resetsAt?: string }[],
     breakdown: null as {
@@ -212,6 +215,21 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     } catch {
       // モデル名は出さない。
     }
+    let effort: string | null = null
+    try {
+      const rows: { key: string; label: string; value: unknown }[] = await $.config.list()
+      const row = rows.find(r => /effort/i.test(r.key) || /effort/i.test(r.label))
+      effort = typeof row?.value === 'string' && row.value !== '' ? row.value : null
+    } catch {
+      // effort は出さない。
+    }
+    let cwd: string | null = null
+    try {
+      const dir = await $.session.cwd()
+      cwd = typeof dir === 'string' && dir !== '' ? dir : null
+    } catch {
+      // ディレクトリは出さない。
+    }
     let list: { id: string; type: string; description: string; status: string }[] | null = null
     try {
       const got = await $.agent.list()
@@ -226,6 +244,8 @@ async function fetchBandData($: any, exact: boolean): Promise<boolean> {
     // 正確に数えた内訳を出しているあいだは、概算の取得で内訳を上書きしない（書く時点の atom で決める）。
     await update($, usageView, cur => ({
       model,
+      effort,
+      cwd,
       context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
       rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
       exactHeld: fullOk || cur.exactHeld,
@@ -883,6 +903,8 @@ export const register: Register = on => {
           stop: b.stop,
           agents: { running: ag.running, rows: ag.rows, open: ag.open },
           model: u.model,
+          effort: u.effort,
+          cwd: u.cwd,
           context: u.context === null ? null : { ...u.context, parts: partsOf(u.breakdown) },
           breakdown: breakdownArgs(u.breakdown, await read($, bandUi), u.exactHeld),
           limits: limitRows(u.rateLimits, Date.now()),
