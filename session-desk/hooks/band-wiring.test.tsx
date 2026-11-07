@@ -342,7 +342,7 @@ test('the context bar is split by the breakdown categories colours', async ($, o
   await $.turn.complete(done())
   await settle()
   const colors = colorsOf(await ui.drawn())
-    .filter(x => /^━+$/.test(x.text))
+    .filter(x => /^▬+$/.test(x.text))
     .map(x => x.color)
   expect(colors).toContain('#61afef')
   expect(colors).toContain('#7ec699')

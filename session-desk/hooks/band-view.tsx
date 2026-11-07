@@ -67,7 +67,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
   const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 2)
-  // バーは太い横線（━）で描く。文字の行の真ん中を通るので、横の文字と高さが揃う（空きは暗い色）。
+  // バーは横長の四角（▬）で描く。文字の行の真ん中にあり、横の文字と高さが揃う。細すぎず、行の半分ほどの太さ（空きは暗い色）。
   // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
   const limitBar = (percent: number, width: number) => {
     const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
@@ -75,8 +75,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
 
     return (
       <Box>
-        <Text color={level === 'normal' ? 'success' : level}>{'━'.repeat(filled)}</Text>
-        <Text dimColor>{'━'.repeat(width - filled)}</Text>
+        <Text color={level === 'normal' ? 'success' : level}>{'▬'.repeat(filled)}</Text>
+        <Text dimColor>{'▬'.repeat(width - filled)}</Text>
       </Box>
     )
   }
@@ -84,7 +84,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
     <Box>
       {barCells(parts, percent, width).map((c, i) => (
         <Text key={`${c.id}-${i}`} color={CATEGORY_COLORS[c.id]}>
-          {'━'.repeat(c.cells)}
+          {'▬'.repeat(c.cells)}
         </Text>
       ))}
     </Box>

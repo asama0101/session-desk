@@ -112,7 +112,7 @@ test('model, context percent colors and tokens; null context omits the line', as
   expect(colorOf(draw({ context: CTX(79) }), '79%')).toBe('success')
   expect(colorOf(draw({ context: CTX(95) }), '95%')).toBe('error')
   expect(texts({ context: null }).join('')).not.toContain('コンテキスト')
-  expect(JSON.stringify(c86)).toContain('━')
+  expect(JSON.stringify(c86)).toContain('▬')
 })
 
 test('limits, git, and omitted lines', async () => {
@@ -157,7 +157,7 @@ test('breakdown legend is always drawn: rows, 概算, exact button, details', as
   // 順序: バー、凡例、compact の行、概算
   const flat = JSON.stringify(draw({ context: CTX(86), breakdown: BREAKDOWN() }))
   const at = (w: string) => flat.indexOf(w)
-  expect(at('━')).toBeLessThan(at('Messages'))
+  expect(at('▬')).toBeLessThan(at('Messages'))
   expect(at('MCP tools')).toBeLessThan(at('自動 compact まで'))
   expect(at('自動 compact まで')).toBeLessThan(at('概算'))
   expect(at('概算')).toBeLessThan(at('band-exact'))
@@ -172,7 +172,7 @@ test('an exact breakdown says 正確 instead of 概算, and the button stays', a
 
 test('the context bar fills the width: columns - 2 cells (min 8), 24 when columns is unknown', async () => {
   const cells = (tree: Node) =>
-    find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^━+$/.test(n.children[0] as string)).reduce(
+    find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^▬+$/.test(n.children[0] as string)).reduce(
       (sum, n) => sum + (n.children[0] as string).length,
       0,
     )
@@ -194,14 +194,14 @@ test('limits draw a bar each: filled by percent, green / yellow / red', async ()
     { label: '日', percent: 96, remaining: null },
   ]
   const tree = draw({ limits })
-  // バーは下半分のブロック（━）。塗った分は色つき、空きは dimColor。
-  const bars = find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^━+$/.test(n.children[0] as string))
+  // バーは横長の四角（▬）。塗った分は色つき、空きは dimColor。
+  const bars = find(tree, n => n.type === 'Text' && typeof n.children[0] === 'string' && /^▬+$/.test(n.children[0] as string))
   const fills = bars.filter(n => n.props.color !== undefined)
   expect(fills.map(n => (n.children[0] as string).length)).toEqual([6, 10, 12])
   expect(fills.map(n => n.props.color)).toEqual(['success', 'warning', 'error'])
-  expect(bars.filter(n => n.props.dimColor === true && n.children[0] === '━'.repeat(6))).toHaveLength(1)
+  expect(bars.filter(n => n.props.dimColor === true && n.children[0] === '▬'.repeat(6))).toHaveLength(1)
   const narrow = draw({ limits: [limits[0]], columns: 30 })
-  expect(find(narrow, n => n.type === 'Text' && n.children[0] === '━'.repeat(3) && n.props.color !== undefined)).toHaveLength(1)
+  expect(find(narrow, n => n.type === 'Text' && n.children[0] === '▬'.repeat(3) && n.props.color !== undefined)).toHaveLength(1)
 })
 
 test('the branch name is bright cyan; the model is bold and coloured by family', async () => {
