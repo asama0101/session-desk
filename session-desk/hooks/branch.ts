@@ -1,0 +1,256 @@
+// ブランチタブの型と、git・gh の出力の解析。エンジンには触れない純粋な関数だけを置く。
+
+export type Kind = 'feat' | 'fix' | 'docs' | 'chore' | 'other' | 'default'
+export type Status = 'done' | 'todo' | 'unknown' | 'skipped'
+// ローカルの先頭と PR の headRefOid の関係。same: 一致、ancestor: ローカルの先頭が PR の先頭の祖先。
+export type Relation = 'same' | 'ancestor' | 'other' | 'unknown'
+
+export type Pr = {
+  number: number
+  state: 'OPEN' | 'MERGED' | 'CLOSED'
+  isDraft: boolean
+  reviewDecision: '' | 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED'
+  createdAt: string
+  mergedAt: string | null
+  headRefName: string
+  headRefOid: string
+  isCrossRepository: boolean
+  latestReviews: { submittedAt: string }[]
+}
+
+// null は「取れなかった」。dirty: status を取れない。ahead: 比較の基準が決まらない。pushed: 確認できない。
+// prKnown が偽は、gh が使えない、または取りこぼしの疑い。
+export type Facts = {
+  dirty: boolean | null
+  ahead: number | null
+  pushed: boolean | null
+  createdAt: string | null
+  firstCommitAt: string | null
+  lastCommitAt: string | null
+  pushedAt: string | null
+  pr: Pr | null
+  prKnown: boolean
+}
+
+export type Stage = { id: number; label: string; status: Status; at: string | null; note: string | null }
+export type Now = { id: number | null; text: string }
+export type RefRow = { ref: string; oid: string; date: string }
+
+const PREFIXES = ['feat', 'fix', 'docs', 'chore'] as const
+
+export function kindOf(name: string, defaultName: string | null): Kind {
+  if (name === defaultName) {
+    return 'default'
+  }
+  const found = PREFIXES.find(prefix => name.startsWith(`${prefix}/`))
+
+  return found ?? 'other'
+}
+
+function linesOf(stdout: string): string[] {
+  return stdout.split(/\r?\n/).filter(line => line.trim() !== '')
+}
+
+export function parseRefs(stdout: string): RefRow[] {
+  const rows: RefRow[] = []
+  for (const line of linesOf(stdout)) {
+    const [ref, oid, date] = line.split('\t')
+    if (ref === undefined || oid === undefined || date === undefined || ref === 'refs/remotes/origin/HEAD') {
+      continue
+    }
+    rows.push({ ref, oid, date })
+  }
+
+  return rows
+}
+
+export function parseAhead(stdout: string): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const line of linesOf(stdout)) {
+    const [ref, counts] = line.split('\t')
+    const ahead = Number((counts ?? '').split(' ')[0])
+    if (ref !== undefined && counts !== undefined && Number.isInteger(ahead)) {
+      map.set(ref, ahead)
+    }
+  }
+
+  return map
+}
+
+export function isDirty(porcelainZ: string): boolean {
+  return porcelainZ !== ''
+}
+
+export function defaultBranchOf(symbolicRef: string | null, heads: readonly string[]): string | null {
+  const prefix = 'refs/remotes/origin/'
+  const ref = symbolicRef?.trim() ?? ''
+  if (ref.startsWith(prefix) && ref.length > prefix.length) {
+    return ref.slice(prefix.length)
+  }
+
+  return ['main', 'master'].find(name => heads.includes(name)) ?? null
+}
+
+// reflog の %gd は `<名>@{日時}` の形。日時の部分を取る。
+function reflogDate(selector: string): string | null {
+  const match = /@\{(.+)\}$/.exec(selector.trim())
+
+  return match?.[1] ?? null
+}
+
+export function parseCreatedAt(stdout: string): string | null {
+  // 新しい順に並んでいるので、最後に出る "branch: Created" が最も古い。
+  const created = linesOf(stdout).filter(line => (line.split('\t')[1] ?? '').startsWith('branch: Created'))
+  const oldest = created[created.length - 1]
+
+  return oldest === undefined ? null : reflogDate(oldest.split('\t')[0] ?? '')
+}
+
+export function parseNewestReflogDate(stdout: string): string | null {
+  const first = linesOf(stdout)[0]
+
+  return first === undefined ? null : reflogDate(first)
+}
+
+export function lastLineOf(stdout: string): string | null {
+  const lines = linesOf(stdout)
+  const last = lines[lines.length - 1]
+
+  return last === undefined ? null : last.trim()
+}
+
+export type BranchRow = {
+  name: string
+  kind: Kind
+  isCurrent: boolean
+  facts: Facts
+  stages: Stage[]
+  now: Now
+}
+
+const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', '削除'] as const
+
+function statusesOf(f: Facts): Status[] {
+  const pr = f.pr
+  const merged = pr?.state === 'MERGED'
+  const yes = (cond: boolean): Status => (cond ? 'done' : 'todo')
+
+  const s1: Status = 'done'
+  let s2: Status
+  let s3: Status
+  let s4: Status
+  if (merged) {
+    s2 = 'done'
+    s3 = f.dirty === true ? 'todo' : 'done'
+    s4 = 'done'
+  } else {
+    const noBase = f.ahead === null || f.dirty === null
+    s2 = noBase ? 'unknown' : yes((f.ahead ?? 0) > 0 || f.dirty === true)
+    s3 = noBase ? 'unknown' : yes((f.ahead ?? 0) > 0 && f.dirty === false)
+    s4 = f.ahead === null || f.pushed === null ? 'unknown' : yes(f.pushed)
+  }
+
+  let s5: Status
+  let s6: Status
+  let s7: Status
+  if (merged) {
+    s5 = s6 = s7 = 'done'
+  } else if (!f.prKnown) {
+    s5 = s6 = s7 = 'unknown'
+  } else {
+    s5 = yes(pr !== null && pr.state !== 'CLOSED')
+    s7 = 'todo'
+    if (pr === null || pr.state !== 'OPEN' || pr.isDraft) {
+      s6 = 'todo'
+    } else if (pr.reviewDecision === 'APPROVED') {
+      s6 = 'done'
+    } else {
+      s6 = pr.reviewDecision === '' ? 'skipped' : 'todo'
+    }
+  }
+  const s8: Status = !merged && (s5 === 'unknown' || s6 === 'unknown' || s7 === 'unknown') ? 'unknown' : 'todo'
+
+  return [s1, s2, s3, s4, s5, s6, s7, s8]
+}
+
+export function computeStages(f: Facts): Stage[] {
+  const pr = f.pr
+  const reviewedAt = (pr?.latestReviews ?? []).map(r => r.submittedAt).sort().pop() ?? null
+  const dates: (string | null)[] = [
+    f.createdAt,
+    f.firstCommitAt,
+    f.lastCommitAt,
+    f.pushedAt,
+    pr?.createdAt ?? null,
+    reviewedAt,
+    pr?.mergedAt ?? null,
+    null,
+  ]
+
+  return statusesOf(f).map((status, i) => ({
+    id: i + 1,
+    label: LABELS[i] as string,
+    status,
+    at: status === 'done' ? (dates[i] ?? null) : null,
+    note: i === 2 && status === 'done' && (f.ahead ?? 0) >= 1 ? `${f.ahead} 件` : null,
+  }))
+}
+
+export function nowOf(stages: readonly Stage[], f: Facts): Now {
+  if (f.pr?.state !== 'MERGED' && (f.ahead === null || f.dirty === null)) {
+    return { id: null, text: '今: 判定できない' }
+  }
+  const stage = stages.find(s => s.status === 'todo')
+  if (stage === undefined) {
+    return { id: null, text: '今: PR 以降は不明' }
+  }
+  const pr = f.pr
+  const texts: Record<number, string> = {
+    2: '次: 編集',
+    3: '編集中',
+    4: '次: push',
+    5: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
+    6: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
+    7: 'マージ待ち',
+    8: '次: ブランチを削除',
+  }
+
+  return { id: stage.id, text: texts[stage.id] ?? '' }
+}
+
+export function buildRow(name: string, kind: Kind, isCurrent: boolean, facts: Facts): BranchRow {
+  if (kind === 'default') {
+    return { name, kind, isCurrent, facts, stages: [], now: { id: null, text: '既定' } }
+  }
+  const stages = computeStages(facts)
+
+  return { name, kind, isCurrent, facts, stages, now: nowOf(stages, facts) }
+}
+
+export function parsePrList(json: string): Pr[] | null {
+  try {
+    const value: unknown = JSON.parse(json)
+
+    return Array.isArray(value) ? (value as Pr[]) : null
+  } catch {
+    return null
+  }
+}
+
+const newestFirst = (a: Pr, b: Pr) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)
+
+// prs は、同じブランチ名の PR。OPEN を優先し、なければ、ローカルの先頭と関係のある MERGED・CLOSED の最新を採る。
+export function adoptPr(prs: readonly Pr[], relation: (pr: Pr) => Relation): { pr: Pr | null; known: boolean } {
+  const own = prs.filter(p => !p.isCrossRepository)
+  const open = own.filter(p => p.state === 'OPEN').sort(newestFirst)[0]
+  if (open !== undefined) {
+    return { pr: open, known: true }
+  }
+  const closed = own.filter(p => p.state !== 'OPEN')
+  const related = closed.filter(p => ['same', 'ancestor'].includes(relation(p))).sort(newestFirst)[0]
+  if (related !== undefined) {
+    return { pr: related, known: true }
+  }
+
+  return { pr: null, known: !closed.some(p => relation(p) === 'unknown') }
+}

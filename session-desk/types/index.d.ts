@@ -1,4 +1,4 @@
-export type Tab = 'history' | 'quick'
+export type Tab = 'history' | 'quick' | 'branch'
 
 declare module 'claude-code' {
   interface PluginState {
@@ -7,6 +7,9 @@ declare module 'claude-code' {
       quick: Shaped<string[]>
       tab: Tab
       selected: number | null
+      // 形は hooks/git.ts の Snapshot。契約は自己完結（import 不可）でなければならないので unknown とし、使う側で型を付ける。
+      snapshot: unknown
+      branchSel: string | null
     }
   }
 }

@@ -2,6 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
+import { renderBranchTab } from './branch-view'
+import { collect, enrich } from './git'
+import type { Run, Snapshot } from './git'
 import {
   DEFAULT_QUICK,
   addQuick,
@@ -11,6 +14,7 @@ import {
   removeQuick,
   stripControl,
 } from './lib'
+import { around, createRefresher, ghDelayMs, wantsGh } from './refresh'
 
 const PANE = 'session-desk'
 const STORE_KEY = 'quick'
@@ -21,10 +25,13 @@ const history = atom({ plugin: 'session-desk', key: 'history' } as const, [], SH
 const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAULT_QUICK], SHAPE)
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
+const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
+const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
   { id: 'history', label: '履歴' },
+  { id: 'branch', label: 'ブランチ' },
 ]
 
 // 定型文を変えたら、atom（画面）とストア（次のセッション）の両方に書く。`$` を受け取る関数は、トップレベルに置く。
@@ -44,8 +51,106 @@ async function togglePane($: any) {
   }
 }
 
+// ブランチタブの更新の状態。`$` は変数に入れられないので、`$` の見える session.start で予約を作り、ここに置く。
+type Desk = {
+  refresher: { request(withGh: boolean): void } | null
+  timer: { cancel(): void } | null
+  ghNextAt: number
+  ghFailures: number
+  failed: boolean
+}
+
+const runOf = ($: any): Run => argv => $.process.run(argv, { timeoutMs: 15000, env: { LC_ALL: 'C' } })
+
+// ブランチタブが表示中のときだけ、git（と、withGh なら gh）を読んで snapshot を更新する。
+async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
+  if ((await read($, tab)) !== 'branch') {
+    return
+  }
+  const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
+  if (!panes.some(pane => pane.id === PANE && pane.isPlaced)) {
+    return
+  }
+  const cwd: string = await $.session.cwd()
+  const chosen = await read($, branchSel)
+  const collected = await collect(runOf($), (await read($, snapshot)) as Snapshot | null, {
+    withGh,
+    cwd,
+    selected: chosen,
+    now: () => new Date(),
+  })
+  if ((await $.session.cwd()) !== cwd) {
+    return
+  }
+  if (withGh) {
+    desk.ghFailures = collected.ghProblem ? desk.ghFailures + 1 : 0
+    desk.ghNextAt = Date.now() + ghDelayMs(desk.ghFailures)
+  }
+  // 選んだブランチがなくなったら、選択を外して、チェックアウト中のブランチに戻す。
+  const gone = chosen !== null && !collected.branches.some(b => b.name === chosen)
+  if (gone) {
+    await update($, branchSel, () => null)
+  }
+  const target = gone || chosen === null ? collected.branches.find(b => b.isCurrent)?.name : chosen
+  const next = target === undefined ? collected : await enrich(runOf($), collected, target)
+  await update($, snapshot, () => next)
+}
+
+async function selectBranch($: any, name: string) {
+  await update($, branchSel, () => name)
+  const snap = (await read($, snapshot)) as Snapshot | null
+  if (snap !== null) {
+    const next = await enrich(runOf($), snap, name)
+    await update($, snapshot, () => next)
+  }
+}
+
+async function selectTab($: any, desk: Desk, id: Tab) {
+  await update($, tab, () => id)
+  if (id === 'branch') {
+    desk.refresher?.request(true)
+  }
+}
+
 export const register: Register = on => {
+  const desk: Desk = { refresher: null, timer: null, ghNextAt: 0, ghFailures: 0, failed: false }
+
+  on('tool.call', async ($, e, next) => {
+    const tool = e.tool as string
+    if (!['Bash', 'Edit', 'Write'].includes(tool)) {
+      return next(e)
+    }
+    const command = tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
+
+    return around(() => next(e), () => desk.refresher?.request(wantsGh(command)))
+  })
+
   on('session.start', async ($, e, next) => {
+    desk.timer?.cancel()
+    desk.refresher = createRefresher({
+      // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
+      run: withGh =>
+        refreshNow($, desk, withGh).then(
+          () => {
+            desk.failed = false
+          },
+          () => {
+            if (!desk.failed) {
+              desk.failed = true
+              void $.ui.toast('ブランチタブを更新できませんでした')
+            }
+          },
+        ),
+      now: () => Date.now(),
+      delay: ms => $.clock.sleep(ms),
+    })
+    try {
+      desk.timer = $.clock.every(10_000, () => {
+        desk.refresher?.request(Date.now() >= desk.ghNextAt)
+      })
+    } catch {
+      // タイマーを作れなくても、ツール実行後の更新と、タブを押したときの更新は動く。
+    }
     void $.ui.open({ id: PANE, title: 'Session Desk' }).catch(() => {})
     try {
       const saved = parseQuick(await $.store.get(STORE_KEY))
@@ -116,6 +221,17 @@ export const register: Register = on => {
               )
             })}
         </Box>
+      )
+    } else if (current === 'branch') {
+      body = renderBranchTab(
+        { Box, Text, Button },
+        {
+          snapshot: (await read($, snapshot)) as Snapshot | null,
+          selected: await read($, branchSel),
+          columns: e.props.bodyColumns,
+          offsetMin: -new Date().getTimezoneOffset(),
+          onSelect: name => void selectBranch($, name),
+        },
       )
     } else {
       const phrases = await read($, quick)
@@ -188,11 +304,11 @@ export const register: Register = on => {
         <Box gap={2}>
           {TABS.map(item =>
             current === item.id ? (
-              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => update($, tab, () => item.id)}>
+              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
                 <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
               </Button>
             ) : (
-              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => update($, tab, () => item.id)} />
+              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
             ),
           )}
         </Box>
