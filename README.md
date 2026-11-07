@@ -38,19 +38,23 @@ claude plugin install session-desk --marketplace asama0101/session-desk
 
 ### zip をダウンロードして導入する
 
-GitHub が使えない環境や、コードを確認してから入れたいときに使う。PowerShell で、次のコマンドを実行する。`session-desk-main` フォルダが、実行したフォルダの中にできる。
+GitHub が使えない環境や、コードを確認してから入れたいときに使う。
+
+**置き場所**: 導入したあとも消さない、決まったフォルダに置く。この手順では、`C:\Users\<ユーザー名>\claude-plugins`（PowerShell の `$HOME\claude-plugins`）にする。ダウンロードフォルダ、デスクトップ、一時フォルダには置かない。導入した mod は、展開したフォルダを直接読むので、あとで削除、移動、名前変更すると動かなくなる。
+
+PowerShell で、次のコマンドを実行する。`$HOME\claude-plugins\session-desk-main` フォルダができる。
 
 ```powershell
+New-Item -ItemType Directory -Force $HOME\claude-plugins
+Set-Location $HOME\claude-plugins
 Invoke-WebRequest https://github.com/asama0101/session-desk/archive/refs/heads/main.zip -OutFile session-desk.zip
 Expand-Archive session-desk.zip -DestinationPath .
 claude plugin install session-desk --marketplace ./session-desk-main
 ```
 
-ブラウザから取る場合は、[main.zip](https://github.com/asama0101/session-desk/archive/refs/heads/main.zip) を保存して展開し、展開したフォルダの親で、最後の 1 行だけを実行する。
+ブラウザから取る場合は、[main.zip](https://github.com/asama0101/session-desk/archive/refs/heads/main.zip) を保存し、`$HOME\claude-plugins` に展開する。そのあと、`Set-Location $HOME\claude-plugins` と、最後の 1 行だけを実行する。展開した `session-desk-main` フォルダは、そこに置いたままにする。
 
-> **注意**: 導入した mod は、展開した `session-desk-main` フォルダを直接読む。導入したあとに、このフォルダを削除、移動、名前変更しないこと。
-
-アンインストールは、次の 2 つのコマンドで行う。展開したフォルダは、そのあとで消してよい。
+アンインストールは、次の 2 つのコマンドで行う。`$HOME\claude-plugins\session-desk-main` フォルダは、そのあとで消してよい。
 
 ```bash
 claude plugin uninstall session-desk
