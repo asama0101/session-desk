@@ -446,3 +446,24 @@ test('collectLight: when status fails it is not a repository', async () => {
     expect(await collectLight(f.run)).toEqual({ isRepo: false, branch: null, dirtyCount: null })
   }
 })
+
+test('the release state is read from origin/main whichever branch is checked out, and 今はしない matches by its key', async () => {
+  const { run } = fake({
+    'describe --tags --abbrev=0 refs/remotes/origin/main': ok('v1.2.0\n'),
+    'rev-list --count refs/tags/v1.2.0..refs/remotes/origin/main': ok('3\n'),
+  })
+  const snap = await collect(run, null, OPTS)
+  expect(snap.release).toEqual({ tag: 'v1.2.0', ahead: 3 })
+  expect(row(snap, 'docs/b')?.facts.releaseSkipped).toBe(false)
+  const skipped = await collect(run, null, { ...OPTS, releaseSkips: ['release:v1.2.0:3'] })
+  expect(row(skipped, 'docs/b')?.facts.releaseSkipped).toBe(true)
+  const changed = await collect(run, null, { ...OPTS, releaseSkips: ['release:v1.2.0:2'] })
+  expect(row(changed, 'docs/b')?.facts.releaseSkipped).toBe(false)
+})
+
+test('with no tag the release state is null and its key is release:none', async () => {
+  const { run } = fake()
+  const snap = await collect(run, null, { ...OPTS, releaseSkips: ['release:none'] })
+  expect(snap.release).toBe(null)
+  expect(row(snap, 'docs/b')?.facts.releaseSkipped).toBe(true)
+})

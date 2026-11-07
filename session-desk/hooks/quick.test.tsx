@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULT_QUICK, addQuick, moveQuick, parseQuick, removeQuick } from './lib'
+import { DEFAULT_QUICK, addQuick, addSkip, moveQuick, parseQuick, parseSkips, removeQuick } from './lib'
 import { ancestorsOf, parentOf, textsOf } from './test-kit'
 
 const PANE = {
@@ -350,4 +350,19 @@ test('a phrase added in the field can be sent, moved and deleted like the others
   expect(await labels(ui)).toEqual(PHRASES)
   expect(saved.get('quick')).toEqual(PHRASES)
   await ui.unmount()
+})
+
+test('parseSkips keeps the newest 20 strings and ignores anything else', async () => {
+  expect(parseSkips('oops')).toEqual([])
+  expect(parseSkips(undefined)).toEqual([])
+  expect(parseSkips(['a', 1, '', 'b'])).toEqual(['a', 'b'])
+  const many = Array.from({ length: 25 }, (_, i) => `k${i}`)
+  expect(parseSkips(many)).toEqual(many.slice(5))
+})
+
+test('addSkip adds a key once and drops the oldest past 20', async () => {
+  expect(addSkip(['a'], 'a')).toEqual(['a'])
+  expect(addSkip(['a'], 'b')).toEqual(['a', 'b'])
+  const full = Array.from({ length: 20 }, (_, i) => `k${i}`)
+  expect(addSkip(full, 'new')).toEqual([...full.slice(1), 'new'])
 })

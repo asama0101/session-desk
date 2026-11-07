@@ -15,7 +15,9 @@ import {
   DEFAULT_QUICK,
   addQuick,
   moveQuick,
+  addSkip,
   parseQuick,
+  parseSkips,
   preview,
   removeQuick,
   stripControl,
@@ -24,6 +26,7 @@ import { around, createRefresher, ghDelayMs, wantsGh } from './refresh'
 
 const PANE = 'session-desk'
 const STORE_KEY = 'quick'
+const SKIP_STORE_KEY = 'releaseSkip'
 
 // 状態は、このモジュールの atom に持つ。形を変えるときは、shape のタグを変える。
 const SHAPE = { shape: 'desk-1' } as const
@@ -32,10 +35,8 @@ const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAUL
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 // 一覧の「もっと見る」を開いているか。タブごと。
-// 「リリースしますか」で「今はしない」を押した状態の key。状態（最新のタグ・未リリースの数）が変わると、また出る。
-const releaseSkip = atom({ plugin: 'session-desk', key: 'releaseSkip' } as const, null as string | null)
-// 「今はしない」を押したブランチ（リリースの段階を飛ばす）。
-const releaseSkipped = atom({ plugin: 'session-desk', key: 'releaseSkipped' } as const, [] as string[])
+// 「今はしない」を押した、リリースの状態の目印（releaseKey）。状態（最新のタグ・未リリースの数）が変わると目印も変わり、また聞く。ストアにも残す。
+const releaseSkip = atom({ plugin: 'session-desk', key: 'releaseSkip' } as const, [] as string[])
 const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
@@ -220,7 +221,7 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     cwd,
     selected: await read($, branchSel),
     now: () => new Date(),
-    releaseSkips: await read($, releaseSkipped),
+    releaseSkips: await read($, releaseSkip),
   })
   if ((await $.session.cwd()) !== cwd) {
     return
@@ -464,9 +465,14 @@ function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandA
   }
 }
 
-// リリースの段階の「今はしない」。そのブランチを覚えて、段階を読み直す。
-async function skipRelease($: any, desk: Desk, name: string) {
-  await update($, releaseSkipped, list => (list.includes(name) ? list : [...list, name])).catch(() => {})
+// 「今はしない」。リリースの状態の目印を覚えて（再起動のあとも残す）、段階を読み直す。
+async function skipRelease($: any, desk: Desk, key: string) {
+  await update($, releaseSkip, list => addSkip(list, key)).catch(() => {})
+  try {
+    await $.store.set(SKIP_STORE_KEY, await read($, releaseSkip))
+  } catch {
+    // 残せなくても、このセッションのあいだは覚えている。
+  }
   desk.refresher?.request(false)
 }
 
@@ -778,6 +784,12 @@ export const register: Register = on => {
     } catch {
       // 保存した定型文を読めなくても、初期値で動く。
     }
+    try {
+      const skips = parseSkips(await $.store.get(SKIP_STORE_KEY))
+      await update($, releaseSkip, () => skips)
+    } catch {
+      // 保存した「今はしない」を読めなくても、もう一度聞くだけ。
+    }
 
     return next(e)
   })
@@ -874,8 +886,7 @@ export const register: Register = on => {
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
           onNext: next => void pressNext($, next),
-          onSkipRelease: name => void skipRelease($, desk, name),
-          release: { skippedKey: await read($, releaseSkip), onSkip: key => void update($, releaseSkip, () => key).catch(() => {}) },
+          release: { skipped: await read($, releaseSkip), onSkip: key => void skipRelease($, desk, key) },
           busy: b.state === 'running',
         },
       )

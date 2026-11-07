@@ -69,12 +69,20 @@ type Over = {
   submitFails?: boolean
   describe?: object
   tagCount?: string
+  stored?: Record<string, unknown>
 }
 
 function engine(on: any, over: Over = {}) {
   const calls: string[] = []
   const submitted: string[] = []
   const toasts: string[] = []
+  const stored = new Map<string, unknown>(Object.entries(over.stored ?? {}))
+  on('store.get', (_: any, e: any) => ({ value: stored.get(e.key) }))
+  on('store.set', (_: any, e: any) => {
+    stored.set(e.key, e.value)
+
+    return { value: undefined }
+  })
   on('ui.toast', (_: any, e: any) => {
     toasts.push(e.text)
 
@@ -120,7 +128,7 @@ function engine(on: any, over: Over = {}) {
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls, submitted, toasts }
+  return { calls, submitted, toasts, stored }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -630,7 +638,7 @@ test('a GitHub-style remote URL is a link (https), and a local path or a URL wit
         onSelect() {},
         more: { open: false, onToggle() {} },
         onNext() {},
-        release: { skippedKey: null, onSkip() {} },
+        release: { skipped: [], onSkip() {} },
         busy: false,
       }),
     )
@@ -641,7 +649,7 @@ test('a GitHub-style remote URL is a link (https), and a local path or a URL wit
   expect(draw('C:/repos/x.git')).not.toContain('"type":"Link"')
   expect(draw('/srv/git/x')).not.toContain('"type":"Link"')
   // Link が渡されないときも、URL は文字として出る。
-  expect(JSON.stringify(renderBranchTab({ Box: 'Box', Text: 'Text', Button: 'Button' }, { snapshot: { problem: null, branches: [], remotes: [{ name: 'origin', url: 'github.com/a/b' }], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: null } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skippedKey: null, onSkip() {} }, busy: false }))).toContain('github.com/a/b')
+  expect(JSON.stringify(renderBranchTab({ Box: 'Box', Text: 'Text', Button: 'Button' }, { snapshot: { problem: null, branches: [], remotes: [{ name: 'origin', url: 'github.com/a/b' }], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: null } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skipped: [], onSkip() {} }, busy: false }))).toContain('github.com/a/b')
 })
 
 // マージの段階では、PR のページへのリンクを、その行の右端に出す。
@@ -672,7 +680,7 @@ test('merge: the stage row of a PR waiting to be merged carries a link to the PR
         onSelect() {},
         more: { open: false, onToggle() {} },
         onNext() {},
-        release: { skippedKey: null, onSkip() {} },
+        release: { skipped: [], onSkip() {} },
         busy: false,
       }),
     )
@@ -706,10 +714,12 @@ test('release stage row: 「▶ リリースする」 and 「今はしない」 
     onNext(n: any) {
       pressed.push(`next:${n.label}`)
     },
-    onSkipRelease(name: string) {
-      pressed.push(`skip:${name}`)
+    release: {
+      skipped: [],
+      onSkip(key: string) {
+        pressed.push(`skip:${key}`)
+      },
     },
-    release: { skippedKey: null, onSkip() {} },
     busy: false,
   } as any)
   const json = JSON.stringify(tree)
@@ -720,8 +730,79 @@ test('release stage row: 「▶ リリースする」 and 「今はしない」 
   expect(json).not.toContain('/pull/19')
   // 忙しいときは、リリースするは薄い字になるが、「今はしない」は押せる。
   const busy = JSON.stringify(
-    renderBranchTab(ui, { snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: 'x' } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, onSkipRelease() {}, release: { skippedKey: null, onSkip() {} }, busy: true } as any),
+    renderBranchTab(ui, { snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: 'x', ghAt: 'x' } as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {}, release: { skipped: [], onSkip() {} }, busy: true } as any),
   )
   expect(busy).not.toContain('"key":"git-next"')
   expect(busy).toContain('"key":"git-stage-release-skip"')
+})
+
+test('release: 「今はしない」 is saved to the store, and a saved answer hides the choice after a restart', async ($, on) => {
+  const e = engine(on, ON_MAIN)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'git-release-skip' })
+  await flush()
+  expect(e.stored.get('releaseSkip')).toEqual(['release:v1.2.0:3'])
+  await ui.unmount()
+})
+
+test('release: an answer saved earlier is loaded at session start; a changed state asks again', async ($, on) => {
+  const e = engine(on, { ...ON_MAIN, stored: { releaseSkip: ['release:v1.2.0:3'] } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await ui.find({ key: 'git-release' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('release: a saved answer for another state does not hide the choice', async ($, on) => {
+  const e = engine(on, { ...ON_MAIN, stored: { releaseSkip: ['release:v1.2.0:2', 'release:v1.1.0:3'] } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await ui.find({ key: 'git-release' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('release: a bad saved value is ignored and the choice is offered', async ($, on) => {
+  const e = engine(on, { ...ON_MAIN, stored: { releaseSkip: 'oops' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await ui.find({ key: 'git-release' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('release: the 「今はしない」 on a merged branch row saves the same key as the one on the default branch', () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const row = prRow({ state: 'MERGED', mergedAt: '2026-11-05T14:00:00+09:00' })
+  const base = { problem: null, branches: [row], remotes: [], cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: '00:00:00' }
+  const pressed: string[] = []
+  const args = (release: object | null) =>
+    ({
+      snapshot: { ...base, release } as any,
+      selected: null,
+      columns: 80,
+      offsetMin: 0,
+      onSelect() {},
+      more: { open: false, onToggle() {} },
+      onNext() {},
+      release: { skipped: [], onSkip: (k: string) => pressed.push(k) },
+      busy: false,
+    }) as any
+  const press = (tree: any) => {
+    const found: any[] = []
+    const walk = (n: any) => {
+      if (n === null || typeof n !== 'object') return
+      if (Array.isArray(n)) {
+        n.forEach(walk)
+
+        return
+      }
+      if (n.props?.label === '今はしない') found.push(n)
+      walk(n.children)
+    }
+    walk(tree)
+    found[0]?.onPress?.()
+  }
+  press(renderBranchTab(ui, args({ tag: 'v1.2.0', ahead: 3 })))
+  press(renderBranchTab(ui, args(null)))
+  expect(pressed).toEqual(['release:v1.2.0:3', 'release:none'])
 })
