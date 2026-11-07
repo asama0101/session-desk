@@ -30,7 +30,10 @@ const REFS =
   'refs/remotes/origin/main\tM1\t2026-11-01T09:00:00+09:00\n'
 const AHEAD = 'refs/heads/docs/b\t3 0\nrefs/heads/feat/a\t2 0\nrefs/heads/main\t0 0\n'
 
-type Setup = Partial<Record<string, Reply>> & { refs?: string; ahead?: string; gh?: Reply; status?: Reply }
+const REMOTE_V =
+  'origin\thttps://github.com/a/b.git (fetch)\norigin\thttps://github.com/a/b.git (push)\n'
+
+type Setup = Partial<Record<string, Reply>> & { refs?: string; ahead?: string; gh?: Reply; status?: Reply; remote?: Reply }
 
 // 偽の run。git の呼び出しは argv の [1] が --no-optional-locks でなければ違反として記録する。
 function fake(setup: Setup = {}) {
@@ -51,6 +54,7 @@ function fake(setup: Setup = {}) {
       else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) reply = ok(setup.refs ?? REFS)
       else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) reply = ok(setup.ahead ?? AHEAD)
       else if (key.startsWith('gh pr list')) reply = setup.gh ?? ok(JSON.stringify([GH_PR({})]))
+      else if (key === 'remote -v') reply = setup.remote ?? ok(REMOTE_V)
       else if (key.startsWith('rev-list --count refs/remotes/origin/main..')) reply = ok('0\n')
       else reply = { exitCode: 1 }
     }
@@ -170,16 +174,16 @@ test('per-branch processes stop at 30; the current and selected branches are alw
     gh: ok(JSON.stringify([GH_PR({ headRefName: 'z-current', headRefOid: 'OLD' })])),
   }
   for (const n of all) {
-    setup[`rev-list --count refs/remotes/origin/${n}..refs/heads/${n}`] = ok('1\n')
+    setup[`rev-list --left-right --count refs/remotes/origin/${n}...refs/heads/${n}`] = ok('0\t1\n')
   }
   setup['merge-base --is-ancestor refs/heads/z-current OLD'] = { exitCode: 0 }
   const f = fake(setup)
   const snap = await collect(f.run, null, { ...OPTS, selected: 'b05' })
-  const perBranch = f.calls.filter(c => c.startsWith('rev-list --count refs/remotes/origin/b') || c.startsWith('rev-list --count refs/remotes/origin/z') || c.startsWith('merge-base'))
+  const perBranch = f.calls.filter(c => c.startsWith('rev-list --left-right --count refs/remotes/origin/b') || c.startsWith('rev-list --left-right --count refs/remotes/origin/z') || c.startsWith('merge-base'))
   expect(perBranch.length).toBe(30)
-  expect(f.calls).toContain('rev-list --count refs/remotes/origin/z-current..refs/heads/z-current')
+  expect(f.calls).toContain('rev-list --left-right --count refs/remotes/origin/z-current...refs/heads/z-current')
   expect(f.calls).toContain('merge-base --is-ancestor refs/heads/z-current OLD')
-  expect(f.calls).toContain('rev-list --count refs/remotes/origin/b05..refs/heads/b05')
+  expect(f.calls).toContain('rev-list --left-right --count refs/remotes/origin/b05...refs/heads/b05')
   expect(row(snap, 'z-current')?.facts.pushed).toBe(false)
   expect(row(snap, 'z-current')?.facts.pr?.state).toBe('MERGED')
   expect(row(snap, 'b05')?.facts.pushed).toBe(false)
@@ -202,7 +206,7 @@ test('warnings: detached HEAD, uncommitted changes on the default branch, unpush
   const dirtyMain = await collect(fake({ 'symbolic-ref -q HEAD': ok('refs/heads/main\n'), status: ok('?? x\0') }).run, null, OPTS)
   expect(dirtyMain.warnings).toContain('既定ブランチ上に未 commit の変更があります')
 
-  const unpushed = await collect(fake({ 'rev-list --count refs/remotes/origin/main..refs/heads/main': ok('2\n') }).run, null, OPTS)
+  const unpushed = await collect(fake({ 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('0\t2\n') }).run, null, OPTS)
   expect(unpushed.warnings).toContain('既定ブランチに未 push の commit があります')
 })
 
@@ -288,4 +292,78 @@ test('when the PR list hit its limit, enrich asks gh for the chosen branch alone
   expect(f.calls).toContain(headKey)
   expect(row(rich, 'feat/a')?.facts.prKnown).toBe(true)
   expect(statuses(rich, 'feat/a')?.slice(4)).toEqual(['todo', 'todo', 'todo', 'todo'])
+})
+
+test('remotes: every remote is listed with a tidy URL; origin makes hasRemote true', async () => {
+  const remote = ok(
+    'origin\thttps://user:ghp_SECRET@github.com/a/b.git (fetch)\norigin\thttps://user:ghp_SECRET@github.com/a/b.git (push)\n' +
+      'upstream\tgit@github.com:c/d.git (fetch)\nupstream\tgit@github.com:c/d.git (push)\n',
+  )
+  const snap = await collect(fake({ remote }).run, null, OPTS)
+  expect(snap.remotes).toEqual([
+    { name: 'origin', url: 'github.com/a/b' },
+    { name: 'upstream', url: 'github.com/c/d' },
+  ])
+  expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(true)
+  expect(JSON.stringify(snap)).not.toContain('SECRET')
+})
+
+test('no remote at all: gh is not called, push onwards is skipped, and the branch reads commit 済み（リモートなし）', async () => {
+  const f = fake({ remote: ok('') })
+  const snap = await collect(f.run, null, OPTS)
+  expect(snap.remotes).toEqual([])
+  expect(f.calls.some(c => c.startsWith('gh '))).toBe(false)
+  expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(false)
+  expect(statuses(snap, 'feat/a')).toEqual(['done', 'done', 'done', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
+  expect(row(snap, 'feat/a')?.now.text).toBe('commit 済み（リモートなし）')
+  expect(snap.ghProblem).toBe(false)
+})
+
+test('only a remote other than origin counts as no origin: it is listed, but push onwards is skipped', async () => {
+  const remote = ok('upstream\tgit@github.com:c/d.git (fetch)\nupstream\tgit@github.com:c/d.git (push)\n')
+  const snap = await collect(fake({ remote }).run, null, OPTS)
+  expect(snap.remotes).toEqual([{ name: 'upstream', url: 'github.com/c/d' }])
+  expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(false)
+})
+
+test('when git remote -v fails, remotes are unknown (null) and the stages are judged as if origin exists', async () => {
+  const snap = await collect(fake({ remote: { exitCode: 128 } }).run, null, OPTS)
+  expect(snap.remotes).toBe(null)
+  expect(row(snap, 'feat/a')?.facts.hasRemote).toBe(true)
+  expect(row(snap, 'feat/a')?.now.text).toBe('次: push')
+})
+
+test('the difference from origin: ahead and behind come from one left-right count; equal tips and no origin give none', async () => {
+  const refs =
+    REFS + 'refs/heads/feat/c\tC1\t2026-11-05T11:40:00+09:00\nrefs/remotes/origin/feat/c\tC0\t2026-11-05T10:00:00+09:00\n' +
+    'refs/remotes/origin/feat/a\tA0\t2026-11-05T10:00:00+09:00\n'
+  const f = fake({
+    refs,
+    'rev-list --left-right --count refs/remotes/origin/feat/a...refs/heads/feat/a': ok('1\t2\n'),
+    'rev-list --left-right --count refs/remotes/origin/feat/c...refs/heads/feat/c': ok('3\t0\n'),
+  })
+  const snap = await collect(f.run, null, OPTS)
+  expect(row(snap, 'feat/a')?.facts.originDiff).toEqual({ ahead: 2, behind: 1 })
+  expect(row(snap, 'feat/a')?.facts.pushed).toBe(false)
+  expect(row(snap, 'feat/c')?.facts.originDiff).toEqual({ ahead: 0, behind: 3 })
+  expect(row(snap, 'feat/c')?.facts.pushed).toBe(true)
+  expect(row(snap, 'docs/b')?.facts.originDiff).toBe(null)
+  expect(row(snap, 'docs/b')?.facts.pushed).toBe(true)
+  expect(f.violations).toEqual([])
+})
+
+test('without origin for the branch there is no difference to show', async () => {
+  const snap = await collect(fake().run, null, OPTS)
+  expect(row(snap, 'feat/a')?.facts.originDiff).toBe(null)
+})
+
+test('the default branch row also shows how far it is from origin, and the unpushed warning uses the same count', async () => {
+  const refs = REFS.replace('refs/remotes/origin/main\tM1', 'refs/remotes/origin/main\tM0')
+  const behind = await collect(fake({ refs, 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('3\t0\n') }).run, null, OPTS)
+  expect(row(behind, 'main')?.facts.originDiff).toEqual({ ahead: 0, behind: 3 })
+  expect(behind.warnings).not.toContain('既定ブランチに未 push の commit があります')
+
+  const ahead = await collect(fake({ refs, 'rev-list --left-right --count refs/remotes/origin/main...refs/heads/main': ok('0\t2\n') }).run, null, OPTS)
+  expect(row(ahead, 'main')?.facts.originDiff).toEqual({ ahead: 2, behind: 0 })
+  expect(ahead.warnings).toContain('既定ブランチに未 push の commit があります')
 })

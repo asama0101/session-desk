@@ -3,6 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import {
   adoptPr,
   buildRow,
+  parseRemotes,
+  tidyUrl,
   computeStages,
   defaultBranchOf,
   isDirty,
@@ -85,6 +87,8 @@ const BARE: Facts = {
   pushedAt: null,
   pr: null,
   prKnown: true,
+  hasRemote: true,
+  originDiff: null,
 }
 const F0: Facts = { ...BARE, ahead: 2, pushed: true }
 const pr = (over: Partial<Pr>): Pr => ({
@@ -234,4 +238,52 @@ test('adoptPr reports unknown when a merged PR cannot be related and nothing els
   // 採れるものがあれば、不明な PR があっても known。
   const open = pr({ number: 5 })
   expect(adoptPr([pr({ state: 'MERGED' }), open], p => (p.number === 5 ? 'same' : 'unknown')).known).toBe(true)
+})
+
+// リモートがないとき: push 以降は対象外（skipped）。
+const NO_REMOTE_CASES: readonly (readonly [string, Facts, string, number | null, string])[] = [
+  ['fresh branch', { ...BARE, hasRemote: false }, 'dttsssss', 2, '次: 編集'],
+  ['uncommitted changes', { ...BARE, hasRemote: false, dirty: true }, 'ddtsssss', 3, '編集中'],
+  ['committed', { ...BARE, hasRemote: false, ahead: 2 }, 'dddsssss', null, 'commit 済み（リモートなし）'],
+  ['committed and edited again', { ...BARE, hasRemote: false, ahead: 2, dirty: true }, 'ddtsssss', 3, '編集中'],
+  ['base unknown', { ...BARE, hasRemote: false, ahead: null }, 'duuussss', null, '今: 判定できない'],
+]
+
+for (const [name, facts, expected, nowId, nowText] of NO_REMOTE_CASES) {
+  test(`stages without a remote: ${name}`, async () => {
+    const stages = computeStages(facts)
+    expect(letters(facts)).toBe(expected)
+    expect(nowOf(stages, facts)).toEqual({ id: nowId, text: nowText })
+  })
+}
+
+test('tidyUrl drops the scheme, the .git suffix and any user:token@, and turns scp-style into host/path', async () => {
+  expect(tidyUrl('https://github.com/asama0101/session-desk.git')).toBe('github.com/asama0101/session-desk')
+  expect(tidyUrl('https://user:ghp_SECRET@github.com/a/b.git')).toBe('github.com/a/b')
+  expect(tidyUrl('https://ghp_SECRET@github.com/a/b')).toBe('github.com/a/b')
+  expect(tidyUrl('git@github.com:a/b.git')).toBe('github.com/a/b')
+  expect(tidyUrl('ssh://git@example.com:2222/a/b.git')).toBe('example.com:2222/a/b')
+  expect(tidyUrl('C:/repos/x.git')).toBe('C:/repos/x')
+  expect(tidyUrl('/srv/git/x')).toBe('/srv/git/x')
+})
+
+test('parseRemotes reads fetch lines of git remote -v, keeps order, tolerates CRLF and never shows credentials', async () => {
+  const out =
+    'origin\thttps://user:ghp_SECRET@github.com/a/b.git (fetch)\r\n' +
+    'origin\thttps://user:ghp_SECRET@github.com/a/b.git (push)\r\n' +
+    'upstream\tgit@github.com:c/d.git (fetch)\r\n' +
+    'upstream\tgit@github.com:c/d.git (push)\r\n'
+  expect(parseRemotes(out)).toEqual([
+    { name: 'origin', url: 'github.com/a/b' },
+    { name: 'upstream', url: 'github.com/c/d' },
+  ])
+  expect(JSON.stringify(parseRemotes(out))).not.toContain('SECRET')
+  expect(parseRemotes('')).toEqual([])
+})
+
+test('tidyUrl removes credentials up to the last @ before the path, and drops a query or fragment', async () => {
+  expect(tidyUrl('https://user:p@ss@host/x.git')).toBe('host/x')
+  expect(tidyUrl('https://host/a@b/c')).toBe('host/a@b/c')
+  expect(tidyUrl('https://host/x.git?token=abc')).toBe('host/x')
+  expect(tidyUrl('https://host/x#frag')).toBe('host/x')
 })

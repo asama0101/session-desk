@@ -11,8 +11,9 @@ import {
   parseNewestReflogDate,
   parsePrList,
   parseRefs,
+  parseRemotes,
 } from './branch'
-import type { BranchRow, Facts, Pr, Relation } from './branch'
+import type { BranchRow, Facts, Pr, Relation, Remote } from './branch'
 import { stripControl } from './lib'
 
 type RunResult = { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean }
@@ -28,6 +29,8 @@ export type Snapshot = {
   prs: Pr[] | null
   prCapped: boolean
   baseRef: string | null
+  // `git remote -v` の結果。取れなかったときは null。
+  remotes: Remote[] | null
   branches: BranchRow[]
   warnings: string[]
 }
@@ -55,7 +58,7 @@ const usable = (r: Safe) => r.exitCode === 0 && !r.isStdoutTruncated
 const clock = (d: Date) => d.toTimeString().slice(0, 8)
 
 function emptySnapshot(cwd: string, gitAt: string, problem: Problem, warnings: string[] = []): Snapshot {
-  return { cwd, gitAt, ghAt: null, problem, ghProblem: false, prs: null, prCapped: false, baseRef: null, branches: [], warnings }
+  return { cwd, gitAt, ghAt: null, problem, ghProblem: false, prs: null, prCapped: false, baseRef: null, remotes: null, branches: [], warnings }
 }
 
 // 現在のブランチ、選択中のブランチ、残りは名前順に並べて、先頭 limit 件。
@@ -71,6 +74,17 @@ async function countOf(run: Run, range: string): Promise<number | null> {
   const n = Number(r.stdout.trim())
 
   return usable(r) && Number.isInteger(n) ? n : null
+}
+
+// right にあって left にない commit 数（ahead）と、その逆（behind）を、1 回で数える。
+async function diffOf(run: Run, left: string, right: string): Promise<{ ahead: number; behind: number } | null> {
+  const r = await git(run, 'rev-list', '--left-right', '--count', `${left}...${right}`)
+  const [behind, ahead] = r.stdout.trim().split(/\s+/).map(Number)
+  if (!usable(r) || behind === undefined || ahead === undefined || !Number.isInteger(behind) || !Number.isInteger(ahead)) {
+    return null
+  }
+
+  return { ahead, behind }
 }
 
 // ローカルの先頭 tip と PR の先頭の関係。ローカルの先頭と一致すれば、プロセスを使わずに same。
@@ -104,11 +118,12 @@ export async function collect(
     return emptySnapshot(opts.cwd, gitAt, repo.stderr.includes('dubious ownership') ? 'unsafe-owner' : 'not-repo')
   }
 
-  const [sym, head, status, refsRes] = await Promise.all([
+  const [sym, head, status, refsRes, remoteRes] = await Promise.all([
     git(run, 'symbolic-ref', '-q', 'refs/remotes/origin/HEAD'),
     git(run, 'symbolic-ref', '-q', 'HEAD'),
     git(run, 'status', '--porcelain=v1', '-z'),
     git(run, 'for-each-ref', '--format=%(refname)%09%(objectname)%09%(committerdate:iso-strict)', 'refs/heads', 'refs/remotes/origin'),
+    git(run, 'remote', '-v'),
   ])
   if (refsRes.rejected) {
     return emptySnapshot(opts.cwd, gitAt, 'timeout')
@@ -132,6 +147,9 @@ export async function collect(
     defaultName === null ? null : origin.has(defaultName) ? `${ORIGIN}${defaultName}` : oidOf.has(defaultName) ? `${HEADS}${defaultName}` : null
   const currentName = head.exitCode === 0 && head.stdout.trim().startsWith(HEADS) ? head.stdout.trim().slice(HEADS.length) : null
   const dirty = usable(status) ? isDirty(status.stdout) : null
+  // 取れなかったときは、origin があるものとして判定する（ないと言い切らない）。
+  const remotes = usable(remoteRes) ? parseRemotes(remoteRes.stdout) : null
+  const hasRemote = remotes === null ? true : remotes.some(r => r.name === 'origin')
 
   let aheadMap: Map<string, number> | null = null
   if (baseRef !== null) {
@@ -146,11 +164,13 @@ export async function collect(
   if (defaultName !== null && currentName === defaultName && dirty === true) {
     warnings.push('既定ブランチ上に未 commit の変更があります')
   }
-  if (defaultName !== null && origin.has(defaultName) && oidOf.has(defaultName)) {
-    const unpushed = await countOf(run, `${ORIGIN}${defaultName}..${HEADS}${defaultName}`)
-    if (unpushed !== null && unpushed >= 1) {
+  let defaultDiff: Facts['originDiff'] = null
+  if (hasRemote && defaultName !== null && origin.has(defaultName) && oidOf.has(defaultName)) {
+    const d = await diffOf(run, `${ORIGIN}${defaultName}`, `${HEADS}${defaultName}`)
+    if (d !== null && d.ahead >= 1) {
       warnings.push('既定ブランチに未 push の commit があります')
     }
+    defaultDiff = d !== null && (d.ahead > 0 || d.behind > 0) ? d : null
   }
 
   // PR（gh）
@@ -159,7 +179,9 @@ export async function collect(
   let ghAt: string | null = null
   let ghProblem = false
   const sameCwd = prev !== null && prev.cwd === opts.cwd
-  if (opts.withGh) {
+  if (!hasRemote) {
+    // リモートがなければ、gh は対象外。
+  } else if (opts.withGh) {
     const g = await safe(run, ['gh', 'pr', 'list', '--state', 'all', '--limit', String(PR_LIMIT), '--json', PR_FIELDS])
     const parsed = usable(g) ? parsePrList(g.stdout) : null
     if (parsed === null) {
@@ -196,13 +218,15 @@ export async function collect(
 
     const originOid = origin.get(name)
     let pushed: boolean | null
-    if (originOid === undefined) {
+    let originDiff: Facts['originDiff'] = null
+    if (!hasRemote || originOid === undefined) {
       pushed = false
     } else if (originOid === tip) {
       pushed = true
     } else {
-      const n = spend() ? await countOf(run, `${ORIGIN}${name}..${ref}`) : null
-      pushed = n === null ? null : n === 0
+      const d = spend() ? await diffOf(run, `${ORIGIN}${name}`, ref) : null
+      pushed = d === null ? null : d.ahead === 0
+      originDiff = d !== null && (d.ahead > 0 || d.behind > 0) ? d : null
     }
 
     const own = (prs ?? []).filter(p => p.headRefName === name)
@@ -224,16 +248,18 @@ export async function collect(
       pushedAt: null,
       pr: adopted.pr,
       prKnown,
+      hasRemote,
+      originDiff,
     }
     built.set(name, buildRow(stripControl(name), kindOf(name, defaultName), name === currentName, facts))
   }
   if (defaultName !== null && oidOf.has(defaultName)) {
-    const facts: Facts = { dirty: false, ahead: 0, pushed: origin.get(defaultName) === oidOf.get(defaultName)?.oid, createdAt: null, firstCommitAt: null, lastCommitAt: oidOf.get(defaultName)?.date ?? null, pushedAt: null, pr: null, prKnown: true }
+    const facts: Facts = { dirty: false, ahead: 0, pushed: origin.get(defaultName) === oidOf.get(defaultName)?.oid, createdAt: null, firstCommitAt: null, lastCommitAt: oidOf.get(defaultName)?.date ?? null, pushedAt: null, pr: null, prKnown: true, hasRemote, originDiff: defaultDiff }
     built.set(defaultName, buildRow(stripControl(defaultName), 'default', defaultName === currentName, facts))
   }
   const branches = heads.map(n => built.get(n)).filter((b): b is BranchRow => b !== undefined)
 
-  return { cwd: opts.cwd, gitAt, ghAt, problem: null, ghProblem, prs, prCapped, baseRef, branches, warnings }
+  return { cwd: opts.cwd, gitAt, ghAt, problem: null, ghProblem, prs, prCapped, baseRef, remotes, branches, warnings }
 }
 
 export async function detailOf(run: Run, name: string, baseRef: string | null): Promise<Detail> {
