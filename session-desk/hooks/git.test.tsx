@@ -429,7 +429,7 @@ test('requeryPr keeps a merge-commit merged PR for a branch with no commits ahea
 })
 
 test('collectLight reads only symbolic-ref HEAD and status, and counts the changed paths', async () => {
-  const f = fake({ status: ok(' M a ') })
+  const f = fake({ status: ok(' M a\0') })
   expect(await collectLight(f.run)).toEqual({ isRepo: true, branch: 'feat/a', dirtyCount: 1 })
   expect(f.calls.sort()).toEqual(['status --porcelain=v1 -z', 'symbolic-ref -q HEAD'])
   expect(f.violations).toEqual([])

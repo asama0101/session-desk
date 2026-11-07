@@ -403,6 +403,6 @@ test('tidyUrl keeps one slash for an scp-style absolute path; parseRemotes shows
 
 test('parseDirtyCount counts changed paths; the old path of a rename is not counted', async () => {
   expect(parseDirtyCount('')).toBe(0)
-  expect(parseDirtyCount('M  a ?? b ')).toBe(2)
-  expect(parseDirtyCount('R  new old  M c ')).toBe(2)
+  expect(parseDirtyCount('M  a\0?? b\0')).toBe(2)
+  expect(parseDirtyCount('R  new\0old\0 M c\0')).toBe(2)
 })
