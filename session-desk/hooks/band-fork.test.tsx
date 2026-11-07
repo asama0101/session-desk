@@ -406,7 +406,7 @@ test('while our fork runs, a Bash call still asks the Git refresh', async ($, on
   await settle()
   expect(s.runs.some(r => r.includes('status --porcelain'))).toBe(true)
   // 帯の記録は飛ばす。
-  expect(await draw(ui)).not.toContain('実行中 Bash')
+  expect(await draw(ui)).not.toContain('Bash')
   await ui.unmount()
 })
 

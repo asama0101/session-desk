@@ -47,7 +47,7 @@ function fakeEngine(on: any, entries?: Record<string, unknown>) {
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
 const send = ($: any, text: string, origin: any = { kind: 'composer' }) => $.prompt.submit({ text, origin })
 // 定型文の一覧は、ふつうの Text。ボタンの label は props にあり、children には入らない。
-const labels = async (ui: any): Promise<string[]> => textsOf(await ui.drawn())
+const labels = async (ui: any): Promise<string[]> => textsOf(await ui.drawn()).filter(text => !/^[▲▼] /.test(text))
 const open = async ($: any) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'tab-quick' })
@@ -118,6 +118,24 @@ test('the phrase is plain text; actions are borderless words on the next line, w
       (box.props as { flexDirection?: string } | undefined)?.flexDirection === 'column',
   )
   expect(list).toBe(true)
+  await ui.unmount()
+})
+
+test('every row has the same four actions in the same order: 送信, 削除, 上へ, 下へ; the ends keep a dim, unpressable slot', async ($, on) => {
+  fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  const tree = await ui.drawn()
+  const rows = [0, 1, 2].map(i => parentOf(tree, `quick-${i}`) as { children: { type: string; props?: { label?: string }; children?: unknown[] }[] })
+  const words = (row: (typeof rows)[number]) =>
+    row.children.map(c => (c.type === 'Button' ? c.props?.label : (c.children as string[])[0]))
+  for (const row of rows) {
+    expect(words(row)).toEqual(['▶ 送信', '× 削除', '▲ 上へ', '▼ 下へ'])
+  }
+  // 先頭の「上へ」と末尾の「下へ」は、押せない字。
+  expect(rows[0].children[2].type).toBe('Text')
+  expect(rows[1].children.map(c => c.type)).toEqual(['Button', 'Button', 'Button', 'Button'])
+  expect(rows[2].children[3].type).toBe('Text')
   await ui.unmount()
 })
 

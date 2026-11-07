@@ -132,9 +132,10 @@ test('the panel opens on 定型文; the selected tab is marked with ▸ and draw
   const tab = async (key: string) => JSON.stringify(await ui.find({ key }))
   expect(await tab('tab-quick')).toContain('"label":"▸ 定型文"')
   expect(await tab('tab-quick')).not.toContain('"dimColor":true')
-  // 選択中のタブは、▸ がアクセント色で、名前が太字。
-  expect(await tab('tab-quick')).toContain('"color":"suggestion"')
+  // 選択中のタブは、水色の面に濃い太字。選んでいないタブは、灰色の面。
+  expect(await tab('tab-quick')).toContain('"backgroundColor":"#4fd6e0"')
   expect(await tab('tab-quick')).toContain('"bold":true')
+  expect(await tab('tab-history')).toContain('"backgroundColor":"#2c2f36"')
   expect(await tab('tab-history')).toContain('"label":"履歴"')
   expect(await tab('tab-history')).toContain('"dimColor":true')
   expect(await ui.find({ key: 'tab-changes' })).toBeUndefined()

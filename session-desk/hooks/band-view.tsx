@@ -1,5 +1,5 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
-import { barCells, BRANCH_COLOR, CATEGORY_COLORS, formatDuration, formatTokens, modelColor, usageColor } from './band'
+import { ACCENT, barCells, BRANCH_COLOR, CATEGORY_COLORS, DARK_TEXT, FACE, FACE_HI, formatDuration, formatTokens, modelColor, usageColor } from './band'
 import type { AgentRow, CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
@@ -39,8 +39,10 @@ const BAR_WIDTH = 24
 const BAR_WIDTH_MIN = 8
 const LIMIT_BAR_WIDTH = 12
 const LIMIT_BAR_WIDTH_NARROW = 6
-// 枠の中の区切り線の既定の長さ（columns が分からないとき）。
-const RULE_WIDTH = 36
+// 見出しの面の色（モデル名が分からないとき）と、停止中・実行中のチップの面の色。
+const HEAD_DEFAULT = '#8a8f9c'
+const CHIP_STOP = '#8a8f9c'
+const CHIP_RUN = '#7db4ff'
 
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
 const AGENT_MARK = {
@@ -62,7 +64,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
     )
   }
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
-  const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 4)
+  const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 2)
   // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
   const limitBar = (percent: number, width: number) => {
     const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
@@ -85,15 +87,24 @@ export function renderBand(ui: Ui, a: BandArgs) {
     </Box>
   )
 
+  // チップ: 色のついた面に濃い字。余白は Box の paddingX で付け、字の中身は変えない。
+  const chip = (word: string, bg: string) => (
+    <Box backgroundColor={bg} paddingX={1}>
+      <Text bold color={DARK_TEXT}>
+        {word}
+      </Text>
+    </Box>
+  )
   const runLine =
     a.run.state === 'running' ? (
       <Box gap={2} flexWrap="wrap">
-        <Text color="suggestion">{a.run.tool === null ? '実行中' : clean(`実行中 ${a.run.tool}`)}</Text>
+        {chip('実行中', CHIP_RUN)}
+        {a.run.tool !== null && <Text color={BRANCH_COLOR}>{clean(a.run.tool)}</Text>}
         {a.run.elapsedMs !== null && <Text>{formatDuration(a.run.elapsedMs)}</Text>}
       </Box>
     ) : a.run.state === 'stopped' ? (
       <Box gap={2} flexWrap="wrap">
-        <Text dimColor>停止中</Text>
+        {chip('停止中', CHIP_STOP)}
         {a.lastTurn !== null && <Text>{`直近 ${formatDuration(a.lastTurn.durationMs)}`}</Text>}
         {a.lastTurn !== null && a.lastTurn.tokens > 0 && <Text>{`${formatTokens(a.lastTurn.tokens)} tokens`}</Text>}
         {a.stop !== null && <Text color={a.stop === 'aborted' ? 'warning' : 'error'}>{STOP_TEXT[a.stop]}</Text>}
@@ -209,7 +220,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const st = a.steps
   const steps =
     st === null ? null : (
-      <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box flexDirection="column" backgroundColor={FACE} paddingX={1}>
         <Box gap={2} flexWrap="wrap">
           <Text bold>提案</Text>
           <Text>{clean(st.reason)}</Text>
@@ -220,10 +231,9 @@ export function renderBand(ui: Ui, a: BandArgs) {
 
           return (
             <Button key={`band-step-${i}`} plain label={text} onPress={() => a.on.pick(i)}>
-              <Text dimColor>{`${i + 1}  `}</Text>
-              <Text bold={best} color="suggestion">
-                {text}
-              </Text>
+              <Text bold color={DARK_TEXT} backgroundColor={ACCENT}>{` ${i + 1} `}</Text>
+              <Text>{'  '}</Text>
+              <Text bold={best}>{text}</Text>
               {best && (
                 <Text bold color="success">
                   {' (推奨)'}
@@ -235,57 +245,53 @@ export function renderBand(ui: Ui, a: BandArgs) {
       </Box>
     )
 
-  // 枠の中は、状態・コンテキスト・利用枠とブランチの 3 段。値のある段だけを、点線で区切って並べる。
-  const rule = <Text dimColor>{'┄'.repeat(Math.max(8, (a.columns ?? RULE_WIDTH + 4) - 4))}</Text>
+  // 段は背景色の面で分ける（枠も線も使わない）。値のある段だけを、空白 1 行をあけて並べる。
+  const face = (key: string, children: any) => (
+    <Box key={`sec-${key}`} flexDirection="column" backgroundColor={FACE} paddingX={1}>
+      {children}
+    </Box>
+  )
   const top = a.goal !== null || runLine !== null || agents !== null
   const foot = limits !== null || git !== null
-  const sections: [string, boolean, any][] = [
-    [
-      'top',
-      top,
-      <Box flexDirection="column">
-        {a.goal !== null && (
-          <Box gap={2} flexWrap="wrap">
-            <Text dimColor>ゴール</Text>
-            <Text>{clean(a.goal)}</Text>
-          </Box>
-        )}
-        {runLine}
-        {agents}
-      </Box>,
-    ],
-    ['context', contextBlock !== null, contextBlock],
-    [
-      'foot',
-      foot,
-      <Box flexDirection="column">
-        {limits}
-        {git}
-      </Box>,
-    ],
-  ]
-  const shown = sections.filter(([, on]) => on)
+  const head = a.model !== null ? modelColor(a.model) : HEAD_DEFAULT
 
   return (
-    <Box flexDirection="column">
-      {(a.model !== null || shown.length > 0) && (
-        <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
-          <Box gap={2}>
-            <Text bold>Session</Text>
-            {a.model !== null && (
-            <Text bold color={modelColor(a.model)}>
+    <Box flexDirection="column" gap={1}>
+      {(a.model !== null || top || contextBlock !== null || foot) && (
+        <Box backgroundColor={head} paddingX={1} gap={2}>
+          <Text bold color={DARK_TEXT}>
+            Session
+          </Text>
+          {a.model !== null && (
+            <Text bold color={DARK_TEXT}>
               {clean(a.model)}
             </Text>
           )}
-          </Box>
-          {shown.map(([key, , node], n) => (
-            <Box key={`sec-${key}`} flexDirection="column">
-              {n > 0 && rule}
-              {node}
-            </Box>
-          ))}
         </Box>
       )}
+      {top &&
+        face(
+          'top',
+          <>
+            {a.goal !== null && (
+              <Box gap={2} flexWrap="wrap">
+                <Text dimColor>ゴール</Text>
+                <Text>{clean(a.goal)}</Text>
+              </Box>
+            )}
+            {runLine}
+            {agents}
+          </>,
+        )}
+      {contextBlock !== null && face('context', contextBlock)}
+      {foot &&
+        face(
+          'foot',
+          <>
+            {limits}
+            {git}
+          </>,
+        )}
       {steps}
     </Box>
   )

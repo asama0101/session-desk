@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, classifyCategory, compactIn, DARK_TEXT, FACE, FACE_HI, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, TAB_ON, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
@@ -793,26 +793,6 @@ export const register: Register = on => {
                 >
                   <Text color="suggestion">▶ 送信</Text>
                 </Button>
-                {i > 0 && (
-                  <Button
-                    key={`quick-up-${i}`}
-                    plain
-                    label="▲ 上へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
-                  >
-                    <Text dimColor>▲ 上へ</Text>
-                  </Button>
-                )}
-                {i < phrases.length - 1 && (
-                  <Button
-                    key={`quick-down-${i}`}
-                    plain
-                    label="▼ 下へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
-                  >
-                    <Text dimColor>▼ 下へ</Text>
-                  </Button>
-                )}
                 <Button
                   key={`quick-del-${i}`}
                   plain
@@ -821,6 +801,31 @@ export const register: Register = on => {
                 >
                   <Text color="error">× 削除</Text>
                 </Button>
+                {/* 順は 送信・削除・上へ・下へ。先頭の「上へ」と末尾の「下へ」は、押せない薄い字で位置を保つ。 */}
+                {i > 0 ? (
+                  <Button
+                    key={`quick-up-${i}`}
+                    plain
+                    label="▲ 上へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
+                  >
+                    <Text dimColor>▲ 上へ</Text>
+                  </Button>
+                ) : (
+                  <Text color={OFF_COLOR}>▲ 上へ</Text>
+                )}
+                {i < phrases.length - 1 ? (
+                  <Button
+                    key={`quick-down-${i}`}
+                    plain
+                    label="▼ 下へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
+                  >
+                    <Text dimColor>▼ 下へ</Text>
+                  </Button>
+                ) : (
+                  <Text color={OFF_COLOR}>▼ 下へ</Text>
+                )}
               </Box>
             </Box>
           ))}
@@ -846,18 +851,22 @@ export const register: Register = on => {
           on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
           columns: e.props.bodyColumns,
         })}
-        <Box gap={2}>
+        <Box gap={1}>
           {TABS.map(item =>
             current === item.id ? (
               <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
-                <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
+                <Text bold color={DARK_TEXT} backgroundColor={TAB_ON}>{` ${item.label} `}</Text>
               </Button>
             ) : (
-              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
+              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)}>
+                <Text backgroundColor={FACE_HI}>{` ${item.label} `}</Text>
+              </Button>
             ),
           )}
         </Box>
-        {body}
+        <Box flexDirection="column" backgroundColor={FACE} paddingX={1}>
+          {body}
+        </Box>
       </Box>
     )
   })
