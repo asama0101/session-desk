@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
+import { renderBranchTab } from './branch-view'
 import { collect } from './git'
 import type { Run, Snapshot } from './git'
 import {
@@ -192,8 +193,16 @@ export const register: Register = on => {
         </Box>
       )
     } else if (current === 'branch') {
-      const snap = (await read($, snapshot)) as Snapshot | null
-      body = snap === null ? <Text dimColor>読み込み中</Text> : <Box />
+      body = renderBranchTab(
+        { Box, Text, Button },
+        {
+          snapshot: (await read($, snapshot)) as Snapshot | null,
+          selected: await read($, branchSel),
+          columns: e.props.bodyColumns,
+          offsetMin: -new Date().getTimezoneOffset(),
+          onSelect: name => void update($, branchSel, () => name),
+        },
+      )
     } else {
       const phrases = await read($, quick)
       body = (
