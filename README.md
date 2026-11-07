@@ -2,6 +2,8 @@
 
 Claude Code の画面の横にサイドパネル「Session Desk」を出す mod（Claude Code の画面を拡張する追加機能）。Claude Code の利用者向け。
 
+![Session Desk のパネル（イメージ）。右にサイドパネルが開き、定型文を「送信」「削除」できる。左の入力欄の上に「サイドパネルの開閉」ボタンがある](docs/panel.svg)
+
 ## 機能
 
 パネルには 2 つのタブがある。初めに開くのは定型文。
@@ -34,9 +36,30 @@ claude plugin install session-desk --marketplace asama0101/session-desk
 
 端末の幅が 144 列以上なら、導入後に開始したセッションでパネルが自動で開く。144 列未満のときは、「サイドパネルの開閉」ボタンを押して開く。
 
+### zip をダウンロードして導入する
+
+GitHub が使えない環境や、コードを確認してから入れたいときに使う。PowerShell で、次のコマンドを実行する。`session-desk-main` フォルダが、実行したフォルダの中にできる。
+
+```powershell
+Invoke-WebRequest https://github.com/asama0101/session-desk/archive/refs/heads/main.zip -OutFile session-desk.zip
+Expand-Archive session-desk.zip -DestinationPath .
+claude plugin install session-desk --marketplace ./session-desk-main
+```
+
+ブラウザから取る場合は、[main.zip](https://github.com/asama0101/session-desk/archive/refs/heads/main.zip) を保存して展開し、展開したフォルダの親で、最後の 1 行だけを実行する。
+
+> **注意**: 導入した mod は、展開した `session-desk-main` フォルダを直接読む。導入したあとに、このフォルダを削除、移動、名前変更しないこと。
+
+アンインストールは、次の 2 つのコマンドで行う。展開したフォルダは、そのあとで消してよい。
+
+```bash
+claude plugin uninstall session-desk
+claude plugin marketplace remove session-desk
+```
+
 ### 保存せずに試す
 
-このリポジトリを手元に取得し、取得したフォルダで次のコマンドを実行する。そのセッションだけで有効になる。
+このリポジトリを手元に取得（`git clone`、または上の zip を展開）し、取得したフォルダで次のコマンドを実行する。そのセッションだけで有効になる。
 
 ```bash
 claude --plugin-dir ./session-desk
