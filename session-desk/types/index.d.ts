@@ -44,7 +44,6 @@ declare module 'claude-code' {
       }
       bandUi: { exact: boolean; detail: string[] }
       branchSel: string | null
-      branchAct: { dismissed: string[]; confirm: string | null }
     }
   }
 }

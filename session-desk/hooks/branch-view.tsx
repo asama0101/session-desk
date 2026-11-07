@@ -1,6 +1,6 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
-import { actionOf, tidyUrl } from './branch'
-import type { Action, BranchRow, Kind, Stage } from './branch'
+import { tidyUrl } from './branch'
+import type { BranchRow, Kind, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
 
@@ -77,7 +77,7 @@ function rowColor(row: BranchRow): string {
   if (row.now.text.startsWith('commit 済み')) {
     return 'success'
   }
-  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'warning', 7: 'success', 8: 'merged' }
+  const byStage: Record<number, string> = { 2: 'inactive', 3: 'warning', 4: 'suggestion', 5: 'suggestion', 6: 'suggestion', 7: 'warning', 8: 'success', 9: 'merged' }
 
   return byStage[row.now.id ?? 0] ?? 'inactive'
 }
@@ -102,14 +102,6 @@ type Args = {
   columns: number
   offsetMin: number
   onSelect(name: string): void
-  // yes/no。dismissed は「いいえ」や「はい」を押した質問の key、confirm は 2 段目の確認中の key。
-  act: {
-    dismissed: readonly string[]
-    confirm: string | null
-    onYes(action: Action): void
-    onNo(action: Action): void
-    onConfirm(action: Action): void
-  }
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -151,10 +143,6 @@ export function renderBranchTab(ui: Ui, a: Args) {
     </Box>
   )
 
-  const defaultName = snap.branches.find(b => b.kind === 'default')?.name ?? null
-  const action = chosen === undefined ? null : actionOf(chosen, defaultName)
-  const asking = action !== null && chosen !== undefined && !a.act.dismissed.includes(action.key)
-
   const detail = (
     <Box flexDirection="column">
       {chosen === undefined ? (
@@ -171,28 +159,6 @@ export function renderBranchTab(ui: Ui, a: Args) {
             </Text>
           )
         })
-      )}
-      {asking && chosen !== undefined && action !== null && a.act.confirm === action.key && (
-        <Box gap={2} flexWrap="wrap">
-          <Text color="error">{stripControl(`本当に ${chosen.name} を削除しますか？`)}</Text>
-          <Button key={`act-confirm:${action.key}`} plain label="削除する" onPress={() => a.act.onConfirm(action)}>
-            <Text color="error">削除する</Text>
-          </Button>
-          <Button key={`act-cancel:${action.key}`} plain label="やめる" onPress={() => a.act.onNo(action)}>
-            <Text>やめる</Text>
-          </Button>
-        </Box>
-      )}
-      {asking && action !== null && a.act.confirm !== action.key && (
-        <Box gap={2}>
-          <Text color="warning">{action.question}</Text>
-          <Button key={`act-yes:${action.key}`} plain label="はい" onPress={() => a.act.onYes(action)}>
-            <Text color="success">はい</Text>
-          </Button>
-          <Button key={`act-no:${action.key}`} plain label="いいえ" onPress={() => a.act.onNo(action)}>
-            <Text color="error">いいえ</Text>
-          </Button>
-        </Box>
       )}
     </Box>
   )

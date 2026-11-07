@@ -150,7 +150,8 @@ export type BranchRow = {
   now: Now
 }
 
-const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', '削除'] as const
+// 段階の並び。レビューは 2 回ある: push の前（自分で見直す。済んだかは git から分からないので、push 済みなら済んだとみなす）と、PR の上（GitHub のレビュー）。
+const LABELS = ['ブランチを切る', '編集', 'commit', 'レビュー（PR 前）', 'push', 'PR', 'レビュー（PR 上）', 'マージ', '削除'] as const
 
 function statusesOf(f: Facts): Status[] {
   const pr = f.pr
@@ -198,7 +199,8 @@ function statusesOf(f: Facts): Status[] {
     s5 = s6 = s7 = s8 = 'skipped'
   }
 
-  return [s1, s2, s3, s4, s5, s6, s7, s8]
+  // push の前のレビューは、push と同じ判定（push 済みなら済み。リモートがなければ対象外）。
+  return [s1, s2, s3, s4, s4, s5, s6, s7, s8]
 }
 
 export function computeStages(f: Facts): Stage[] {
@@ -208,6 +210,7 @@ export function computeStages(f: Facts): Stage[] {
     f.createdAt,
     f.firstCommitAt,
     f.lastCommitAt,
+    null,
     f.pushedAt,
     pr?.createdAt ?? null,
     reviewedAt,
@@ -236,11 +239,12 @@ export function nowOf(stages: readonly Stage[], f: Facts): Now {
   const texts: Record<number, string> = {
     2: '次: 編集',
     3: '編集中',
-    4: '次: push',
-    5: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
-    6: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
-    7: 'マージ待ち',
-    8: '次: ブランチを削除',
+    4: '次: レビュー',
+    5: '次: push',
+    6: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
+    7: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
+    8: 'マージ待ち',
+    9: '次: ブランチを削除',
   }
 
   return { id: stage.id, text: texts[stage.id] ?? '' }
@@ -313,84 +317,4 @@ export function parseRemotes(stdout: string): Remote[] {
   }
 
   return found
-}
-
-export type Action = {
-  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。「いいえ」を覚えておく目印。
-  key: string
-  kind: 'commit' | 'push' | 'pr' | 'delete'
-  question: string
-  // 「はい」を押したとき、Claude に送る依頼。
-  prompt: string
-}
-
-// いまチェックアウトしているブランチの「今」が、commit・push・PR・削除のどれかなら、yes/no で聞く内容を返す。
-export function actionOf(row: BranchRow, base: string | null = null): Action | null {
-  if (!row.isCurrent || row.kind === 'default') {
-    return null
-  }
-  const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
-  switch (row.now.id) {
-    case 3:
-      // マージ済みのブランチに commit は促さない。
-      return row.facts.dirty === true && row.facts.pr?.state !== 'MERGED'
-        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ「${row.name}」の未コミットの変更を commit してください` }
-        : null
-    case 4:
-      // origin のほうが進んでいるときは、push を聞かない（先に取り込みが要る）。
-      return (row.facts.originDiff?.behind ?? 0) > 0
-        ? null
-        : { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ「${row.name}」を push してください` }
-    case 5:
-      // push の状態が不明なときは、PR を聞かない。
-      if (row.facts.pushed === null) {
-        return null
-      }
-
-      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
-    case 8:
-      return {
-        key,
-        kind: 'delete',
-        question: '削除しますか？',
-        prompt: `はい。マージ済みの作業ブランチ「${row.name}」を削除してください`,
-      }
-    default:
-      return null
-  }
-}
-
-// 質問への答え方。画面の押下は古いことがあり、二度押しもあるので、送る前に、いまの状態と照らす。
-//   yes: 「はい」。削除なら、まだ送らず 2 段目の確認へ（confirm）。
-//   confirm: 削除の 2 段目の「削除する」。1 段目を済ませた同じ質問のときだけ送る。
-//   no: 「いいえ」「やめる」。
-export type Step = 'yes' | 'no' | 'confirm'
-
-export function decideAnswer(
-  step: Step,
-  action: Action,
-  dismissed: readonly string[],
-  confirm: string | null,
-  current: BranchRow | undefined,
-): 'ignore' | 'dismiss' | 'confirm' | 'send' {
-  if (dismissed.includes(action.key)) {
-    return 'ignore'
-  }
-  if (step === 'no') {
-    return 'dismiss'
-  }
-  // 押した質問が、いまのブランチの質問と同じときだけ進む（段階が進んだ・別のブランチになったときは何もしない）。
-  if (current === undefined || actionOf(current)?.key !== action.key) {
-    return 'ignore'
-  }
-  if (step === 'yes') {
-    return action.kind === 'delete' ? 'confirm' : 'send'
-  }
-
-  return action.kind === 'delete' && confirm === action.key ? 'send' : 'ignore'
-}
-
-// 答え済みの確認の key を覚える。同じ key は 1 つにし、新しい順に max 件だけ残す。
-export function remember(list: readonly string[], key: string, max: number): string[] {
-  return [...list.filter(k => k !== key), key].slice(-max)
 }

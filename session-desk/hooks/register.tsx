@@ -6,8 +6,6 @@ import { addTool, BRANCH_COLOR, classifyCategory, compactIn, forkPrompt, limitRo
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
-import { actionOf, decideAnswer, remember } from './branch'
-import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
@@ -83,8 +81,6 @@ let toolSeq = 0
 const forkGuard = { seq: 0, id: null as number | null, userSent: false }
 const FORK_TIMEOUT_MS = 30_000
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
-// yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
-const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
@@ -147,7 +143,6 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     desk.ghFailures = 0
     desk.ghNextAt = 0
     await update($, snapshot, () => null)
-    await update($, branchAct, () => ({ dismissed: [], confirm: null }))
   }
   const readGh = withGh || moved
   const collected = await collect(runOf($), moved ? null : prev, {
@@ -173,11 +168,6 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const current = collected.branches.find(b => b.isCurrent)
   const target = gone || chosen === null ? current?.name : chosen
   const next = target === undefined ? collected : await enrich(runOf($), collected, target)
-  // 削除の 2 段目の確認は、同じ質問のあいだだけ有効にする（状態が進んだら、1 段目に戻す）。
-  // 質問は、PR を引き直したあとの現在ブランチ（next）から作る。
-  const nowCurrent = next.branches.find(b => b.isCurrent)
-  const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
-  await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
   await refreshBand($, cwd)
 }
@@ -391,12 +381,7 @@ function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandA
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
-  const before = await read($, branchSel)
   await update($, branchSel, () => name)
-  // ほかのブランチへ移ったら、削除の 2 段目の確認は 1 段目に戻す（同じブランチを押し直したときは戻さない）。
-  if (before !== name) {
-    await update($, branchAct, state => ({ ...state, confirm: null }))
-  }
   const snap = (await read($, snapshot)) as Snapshot | null
   if (snap !== null) {
     const next = await enrich(runOf($), snap, name)
@@ -415,31 +400,6 @@ async function selectBranch($: any, desk: Desk, name: string) {
     if (!replaced) {
       desk.refresher?.request(false)
     }
-  }
-}
-
-// 「はい」「いいえ」を答える。「はい」は Claude に依頼を送る（削除だけ、確認を 2 段にする）。
-// 押下が古い・二度押しのときは、decideAnswer が何もしないと決める。
-async function answerAction($: any, action: Action, step: Step) {
-  const now = await read($, branchAct)
-  const snap = (await read($, snapshot)) as Snapshot | null
-  const decision = decideAnswer(step, action, now.dismissed, now.confirm, snap?.branches.find(b => b.isCurrent))
-  if (decision === 'ignore') {
-    return
-  }
-  if (decision === 'confirm') {
-    await update($, branchAct, state => ({ ...state, confirm: action.key }))
-
-    return
-  }
-  await update($, branchAct, state => ({ dismissed: remember(state.dismissed, action.key, 20), confirm: null }))
-  if (decision === 'send') {
-    // 送れなかったときは、確認が消えただけで終わらないように、知らせる。
-    $.prompt.submit({ text: action.prompt }).catch(() => {
-      void $.ui.toast('依頼を送れませんでした')
-      // 押し直せるように、答え済みの記録を外す。
-      void update($, branchAct, state => ({ ...state, dismissed: state.dismissed.filter(k => k !== action.key) }))
-    })
   }
 }
 
@@ -744,7 +704,6 @@ export const register: Register = on => {
         </Box>
       )
     } else if (current === 'git') {
-      const act = await read($, branchAct)
       body = renderBranchTab(
         { Box, Text, Button },
         {
@@ -753,13 +712,6 @@ export const register: Register = on => {
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, desk, name),
-          act: {
-            dismissed: act.dismissed,
-            confirm: act.confirm,
-            onYes: action => void answerAction($, action, 'yes'),
-            onNo: action => void answerAction($, action, 'no'),
-            onConfirm: action => void answerAction($, action, 'confirm'),
-          },
         },
       )
     } else {

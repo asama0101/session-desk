@@ -120,7 +120,7 @@ test('when the chosen branch disappears, the screen goes back to the current bra
   await $.tool.call({ tool: 'Bash', command: 'git branch -d docs/b' })
   await settle(e.calls)
   expect(await ui.find({ key: 'branch-docs/b' })).toBeUndefined()
-  expect(await texts(ui)).toContain('● push  次: push')
+  expect(await texts(ui)).toContain('● レビュー（PR 前）  次: レビュー')
   await ui.unmount()
 })
 
@@ -137,22 +137,3 @@ const MERGED_DOCS_B = {
   latestReviews: [],
 }
 
-test('a half-finished delete confirmation survives refreshes even when the PR list hit its limit', async ($, on) => {
-  const e = engine(on)
-  e.cfg.head = 'refs/heads/docs/b\n'
-  e.cfg.listPrs = JSON.stringify(
-    Array.from({ length: 200 }, (_, i) => ({ ...MERGED_DOCS_B, number: 100 + i, headRefName: `other${i}`, state: 'CLOSED' })),
-  )
-  e.cfg.headPrs = JSON.stringify([MERGED_DOCS_B])
-  await start($)
-  const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('削除しますか？')
-  const yes = await ui.find({ type: 'Button', text: 'はい' })
-  await ui.press({ key: yes.key })
-  await flush()
-  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
-  await $.tool.call({ tool: 'Bash', command: 'ls' })
-  await settle(e.calls)
-  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
-  await ui.unmount()
-})
