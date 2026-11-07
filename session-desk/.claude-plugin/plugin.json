@@ -1,0 +1,6 @@
+{
+  "name": "session-desk",
+  "version": "0.1.0",
+  "description": "サイド UI パネル（履歴・定型文）と、入力欄の上のパネル開閉ボタンを出す mod。",
+  "types": "./types/index.d.ts"
+}
