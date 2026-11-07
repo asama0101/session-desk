@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
+import { decideAnswer } from './branch'
+import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
 import { collect, enrich } from './git'
 import type { Run, Snapshot } from './git'
@@ -27,6 +29,8 @@ const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
+// yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
+const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
@@ -102,6 +106,26 @@ async function selectBranch($: any, name: string) {
   if (snap !== null) {
     const next = await enrich(runOf($), snap, name)
     await update($, snapshot, () => next)
+  }
+}
+
+// 「はい」「いいえ」を答える。「はい」は Claude に依頼を送る（削除だけ、確認を 2 段にする）。
+// 押下が古い・二度押しのときは、decideAnswer が何もしないと決める。
+async function answerAction($: any, action: Action, step: Step) {
+  const now = await read($, branchAct)
+  const snap = (await read($, snapshot)) as Snapshot | null
+  const decision = decideAnswer(step, action, now.dismissed, now.confirm, snap?.branches.find(b => b.isCurrent))
+  if (decision === 'ignore') {
+    return
+  }
+  if (decision === 'confirm') {
+    await update($, branchAct, state => ({ ...state, confirm: action.key }))
+
+    return
+  }
+  await update($, branchAct, state => ({ dismissed: [...state.dismissed, action.key], confirm: null }))
+  if (decision === 'send') {
+    void $.prompt.submit({ text: action.prompt })
   }
 }
 
@@ -223,6 +247,7 @@ export const register: Register = on => {
         </Box>
       )
     } else if (current === 'branch') {
+      const act = await read($, branchAct)
       body = renderBranchTab(
         { Box, Text, Button },
         {
@@ -231,6 +256,13 @@ export const register: Register = on => {
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, name),
+          act: {
+            dismissed: act.dismissed,
+            confirm: act.confirm,
+            onYes: action => void answerAction($, action, 'yes'),
+            onNo: action => void answerAction($, action, 'no'),
+            onConfirm: action => void answerAction($, action, 'confirm'),
+          },
         },
       )
     } else {

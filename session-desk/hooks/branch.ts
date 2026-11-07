@@ -294,3 +294,69 @@ export function parseRemotes(stdout: string): Remote[] {
 
   return found
 }
+
+export type Action = {
+  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。「いいえ」を覚えておく目印。
+  key: string
+  kind: 'commit' | 'push' | 'pr' | 'delete'
+  question: string
+  // 「はい」を押したとき、Claude に送る依頼。
+  prompt: string
+}
+
+// いまチェックアウトしているブランチの「今」が、commit・push・PR・削除のどれかなら、yes/no で聞く内容を返す。
+export function actionOf(row: BranchRow, base: string | null = null): Action | null {
+  if (!row.isCurrent || row.kind === 'default') {
+    return null
+  }
+  const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
+  switch (row.now.id) {
+    case 3:
+      return row.facts.dirty === true
+        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ ${row.name} の未コミットの変更を commit してください` }
+        : null
+    case 4:
+      return { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ ${row.name} を push してください` }
+    case 5:
+      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ ${row.name} の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
+    case 8:
+      return {
+        key,
+        kind: 'delete',
+        question: '削除しますか？',
+        prompt: `はい。マージ済みの作業ブランチ ${row.name} を削除してください`,
+      }
+    default:
+      return null
+  }
+}
+
+// 質問への答え方。画面の押下は古いことがあり、二度押しもあるので、送る前に、いまの状態と照らす。
+//   yes: 「はい」。削除なら、まだ送らず 2 段目の確認へ（confirm）。
+//   confirm: 削除の 2 段目の「削除する」。1 段目を済ませた同じ質問のときだけ送る。
+//   no: 「いいえ」「やめる」。
+export type Step = 'yes' | 'no' | 'confirm'
+
+export function decideAnswer(
+  step: Step,
+  action: Action,
+  dismissed: readonly string[],
+  confirm: string | null,
+  current: BranchRow | undefined,
+): 'ignore' | 'dismiss' | 'confirm' | 'send' {
+  if (dismissed.includes(action.key)) {
+    return 'ignore'
+  }
+  if (step === 'no') {
+    return 'dismiss'
+  }
+  // 押した質問が、いまのブランチの質問と同じときだけ進む（段階が進んだ・別のブランチになったときは何もしない）。
+  if (current === undefined || actionOf(current)?.key !== action.key) {
+    return 'ignore'
+  }
+  if (step === 'yes') {
+    return action.kind === 'delete' ? 'confirm' : 'send'
+  }
+
+  return action.kind === 'delete' && confirm === action.key ? 'send' : 'ignore'
+}
