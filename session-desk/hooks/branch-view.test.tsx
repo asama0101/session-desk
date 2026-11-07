@@ -164,9 +164,9 @@ test('the current branch is selected first; its stages show symbols, dates, the 
   expect(lines).toContain('● push  次: push')
   expect(lines).toContain('○ PR')
   expect(lines).toContain('feat/a')
-  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（9 段階）。
+  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（8 段階）。
   const rail = lines.filter(l => ['┌', '├', '└'].includes(l))
-  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '├', '└'])
+  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '└'])
   await ui.unmount()
 })
 
@@ -677,12 +677,13 @@ test('merge: the stage row of a PR waiting to be merged carries a link to the PR
       }),
     )
   const row = prRow({})
-  expect(row.now).toEqual({ id: 7, text: 'マージ待ち' })
+  expect(row.now).toEqual({ id: 6, text: 'マージ待ち' })
   const json = draw(row)
   expect(json).toContain('"href":"https://github.com/a/b/pull/19"')
   expect(json).toContain('PR #19  github.com/a/b/pull/19')
-  // レビューを待っている段階（マージの前）には、まだ出さない。
-  expect(draw(prRow({ reviewDecision: 'REVIEW_REQUIRED' }))).not.toContain('/pull/19')
+  // レビューの段階はない。レビュー待ちや草稿でも、PR が開いていれば、マージの行に出す。
+  expect(draw(prRow({ reviewDecision: 'REVIEW_REQUIRED' }))).toContain('/pull/19')
+  expect(draw(prRow({ isDraft: true }))).toContain('/pull/19')
   // url がない・https でない・閉じた PR は、出さない。
   expect(draw(prRow({ url: undefined }))).not.toContain('/pull/')
   expect(draw(prRow({ url: 'javascript:alert(1)' }))).not.toContain('javascript')
@@ -694,7 +695,7 @@ test('release stage row: 「▶ リリースする」 and 「今はしない」 
   const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
   const pressed: string[] = []
   const row = prRow({ state: 'MERGED', mergedAt: '2026-11-05T14:00:00+09:00' })
-  expect(row.now).toEqual({ id: 8, text: '次: リリース' })
+  expect(row.now).toEqual({ id: 7, text: '次: リリース' })
   const tree = renderBranchTab(ui, {
     snapshot: { problem: null, branches: [row], remotes: [], release: null, cwd: 'D:/p', warnings: [], gitAt: '00:00:00', ghAt: '00:00:00' } as any,
     selected: null,
