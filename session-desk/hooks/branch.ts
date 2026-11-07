@@ -338,6 +338,10 @@ export function nextOf(row: BranchRow, base: string | null = null): Next | null 
   if (!row.isCurrent || row.kind === 'default') {
     return null
   }
+  // 依頼文は名前を「」で囲む。名前に「」や改行があると、囲みを破って文を足せるので、ボタンを出さない。
+  if (/[「」\r\n]/.test(row.name)) {
+    return null
+  }
   const key = `${row.name}:${row.now.id}:${row.facts.ahead}`
   switch (row.now.id) {
     case 3:

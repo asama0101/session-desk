@@ -169,7 +169,7 @@ export function barCells(
       if (p.tokens > 0) out.push({ id: p.id, cells: Math.max(1, Math.round((p.tokens / total) * used)) })
     }
     const sum = out.reduce((a, c) => a + c.cells, 0)
-    const biggest = out.reduce((a, c) => (c.cells > a.cells ? c : a), out[0])
+    const biggest = out.reduce((a, c) => (c.cells > a.cells ? c : a))
     biggest.cells = Math.max(1, biggest.cells + used - sum)
   }
   const usedCells = out.reduce((a, c) => a + c.cells, 0)
@@ -283,7 +283,8 @@ export function removeTool(s: RunState, id: number): RunState {
 // 最も古い 1 件の名前。2 件以上なら `名前 +n`。
 export function toolLabel(s: RunState): string | null {
   if (s.tools.length === 0) return null
-  return s.tools.length === 1 ? s.tools[0].name : `${s.tools[0].name} +${s.tools.length - 1}`
+  const first = s.tools[0]?.name ?? ''
+  return s.tools.length === 1 ? first : `${first} +${s.tools.length - 1}`
 }
 
 // ---- サブエージェント ----
