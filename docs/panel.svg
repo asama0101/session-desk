@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">Session Desk のパネル（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは定型文タブを開いていて、3 件の定型文に「送信」と「削除」のボタンが付いている。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは定型文タブを開いていて、上に新しい定型文を入れる入力欄があり、3 件の定型文に「送信」「上へ」「下へ」「削除」のボタンが付いている（先頭に「上へ」、末尾に「下へ」は出ない）。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
 
   <!-- 端末 -->
   <rect x="0" y="0" width="960" height="500" rx="10" fill="#1e1e1e"/>
@@ -31,20 +31,28 @@
   <text x="652" y="82" fill="#d4d4d4" font-weight="bold">定型文</text>
   <text x="732" y="82" fill="#858585">履歴</text>
 
+  <!-- 入力欄（新しい定型文を足す） -->
+  <rect x="632" y="104" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
+  <text x="644" y="122" fill="#858585">新しい定型文を入力して Enter</text>
+
   <!-- 定型文 1 -->
-  <text x="632" y="128" fill="#d4d4d4">残りのタスクは？</text>
-  <text x="632" y="152" fill="#b1b9f9">▶ 送信</text>
-  <text x="712" y="152" fill="#ff6b80">× 削除</text>
+  <text x="632" y="172" fill="#d4d4d4">残りのタスクは？</text>
+  <text x="632" y="196" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="196" fill="#b1b9f9">▼ 下へ</text>
+  <text x="772" y="196" fill="#ff6b80">× 削除</text>
 
   <!-- 定型文 2（折り返し） -->
-  <text x="632" y="198" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
-  <text x="632" y="220" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
-  <text x="632" y="242" fill="#d4d4d4">して</text>
-  <text x="632" y="266" fill="#b1b9f9">▶ 送信</text>
-  <text x="712" y="266" fill="#ff6b80">× 削除</text>
+  <text x="632" y="242" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
+  <text x="632" y="264" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
+  <text x="632" y="286" fill="#d4d4d4">して</text>
+  <text x="632" y="310" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="310" fill="#b1b9f9">▲ 上へ</text>
+  <text x="772" y="310" fill="#b1b9f9">▼ 下へ</text>
+  <text x="842" y="310" fill="#ff6b80">× 削除</text>
 
   <!-- 定型文 3 -->
-  <text x="632" y="312" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
-  <text x="632" y="336" fill="#b1b9f9">▶ 送信</text>
-  <text x="712" y="336" fill="#ff6b80">× 削除</text>
+  <text x="632" y="356" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
+  <text x="632" y="380" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="380" fill="#b1b9f9">▲ 上へ</text>
+  <text x="772" y="380" fill="#ff6b80">× 削除</text>
 </svg>
