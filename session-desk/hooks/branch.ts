@@ -36,6 +36,10 @@ export type Facts = {
   hasRemote: boolean
   // origin の同名ブランチとの差。ahead: origin にまだない commit、behind: origin だけにある commit。差がない・origin にない・不明のときは null。
   originDiff: { ahead: number; behind: number } | null
+  // リポジトリの最新のタグの日時（作成日）。known が偽は、取れなかった。タグが 1 つもないときは、known が真で latestAt が null。省くと、known・タグなしとみなす。
+  tags?: { known: boolean; latestAt: string | null }
+  // 「今はしない」を押したブランチ（リリースの段階を飛ばす）。
+  releaseSkipped?: boolean
 }
 
 export type Stage = { id: number; label: string; status: Status; at: string | null; note: string | null }
@@ -152,7 +156,7 @@ export type BranchRow = {
   now: Now
 }
 
-const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', '削除'] as const
+const LABELS = ['ブランチを切る', '編集', 'commit', 'push', 'PR', 'レビュー', 'マージ', 'リリース', '削除'] as const
 
 function statusesOf(f: Facts): Status[] {
   const pr = f.pr
@@ -192,15 +196,27 @@ function statusesOf(f: Facts): Status[] {
       s6 = pr.reviewDecision === '' ? 'skipped' : 'todo'
     }
   }
+  // リリース: マージ済みなら、マージより後にタグが作られていれば済み。「今はしない」なら対象外。マージ前は、削除と同じ（PR 以降が不明なら不明）。
   let s8: Status = !merged && (s5 === 'unknown' || s6 === 'unknown' || s7 === 'unknown') ? 'unknown' : 'todo'
+  if (merged) {
+    const tags = f.tags ?? { known: true, latestAt: null }
+    if (f.releaseSkipped === true) {
+      s8 = 'skipped'
+    } else if (!tags.known) {
+      s8 = 'unknown'
+    } else {
+      s8 = tags.latestAt !== null && pr?.mergedAt != null && Date.parse(tags.latestAt) >= Date.parse(pr.mergedAt) ? 'done' : 'todo'
+    }
+  }
+  let s9: Status = s8 === 'unknown' && !merged ? 'unknown' : 'todo'
 
   if (!merged && !f.hasRemote) {
     // リモートがなければ、push 以降は対象外。比較の基準が決まらないときだけ、段階 4 は不明のまま。
     s4 = f.ahead === null ? 'unknown' : 'skipped'
-    s5 = s6 = s7 = s8 = 'skipped'
+    s5 = s6 = s7 = s8 = s9 = 'skipped'
   }
 
-  return [s1, s2, s3, s4, s5, s6, s7, s8]
+  return [s1, s2, s3, s4, s5, s6, s7, s8, s9]
 }
 
 export function computeStages(f: Facts): Stage[] {
@@ -214,6 +230,7 @@ export function computeStages(f: Facts): Stage[] {
     pr?.createdAt ?? null,
     reviewedAt,
     pr?.mergedAt ?? null,
+    f.tags?.latestAt ?? null,
     null,
   ]
 
@@ -242,7 +259,8 @@ export function nowOf(stages: readonly Stage[], f: Facts): Now {
     5: pr?.state === 'CLOSED' ? '次: PR を作り直す' : '次: PR を作る',
     6: pr?.isDraft ? '次: 草稿を解除する' : pr?.reviewDecision === 'CHANGES_REQUESTED' ? '次: 指摘を直す' : '次: レビューを待つ',
     7: 'マージ待ち',
-    8: '次: ブランチを削除',
+    8: '次: リリース',
+    9: '次: ブランチを削除',
   }
 
   return { id: stage.id, text: texts[stage.id] ?? '' }
@@ -347,6 +365,8 @@ export function nextOf(row: BranchRow, base: string | null = null): Next | null 
         ? null
         : { key, label: '▶ PR を作る', prompt: `ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
     case 8:
+      return { key, label: '▶ リリースする', prompt: `ブランチ「${row.name}」のマージ済みの変更をリリースしてください（version を上げる PR、タグ、Release の順）` }
+    case 9:
       return { key, label: '▶ ブランチを削除', prompt: `マージ済みの作業ブランチ「${row.name}」を削除してください` }
     default:
       return null

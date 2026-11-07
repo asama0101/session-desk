@@ -129,7 +129,7 @@ async function releaseOf(run: Run, defaultName: string): Promise<{ tag: string; 
 export async function collect(
   run: Run,
   prev: Snapshot | null,
-  opts: { withGh: boolean; cwd: string; selected: string | null; now: () => Date },
+  opts: { withGh: boolean; cwd: string; selected: string | null; now: () => Date; releaseSkips?: readonly string[] },
 ): Promise<Snapshot> {
   const gitAt = clock(opts.now())
   const repo = await git(run, 'rev-parse', '--git-dir')
@@ -197,6 +197,10 @@ export async function collect(
     }
     defaultDiff = d !== null && (d.ahead > 0 || d.behind > 0) ? d : null
   }
+
+  // 最新のタグの日時（リリースの段階の判定に使う。1 本）
+  const tagRes = await git(run, 'for-each-ref', '--sort=-creatordate', '--count=1', '--format=%(creatordate:iso-strict)', 'refs/tags')
+  const tags: Facts['tags'] = { known: usable(tagRes), latestAt: usable(tagRes) && tagRes.stdout.trim() !== '' ? tagRes.stdout.trim() : null }
 
   // 未リリースの commit（既定ブランチにいるときだけ。git を 2 本使う）
   const release = defaultName !== null && currentName === defaultName && oidOf.has(defaultName) ? await releaseOf(run, defaultName) : null
@@ -284,6 +288,8 @@ export async function collect(
       prKnown,
       hasRemote,
       originDiff,
+      tags,
+      releaseSkipped: opts.releaseSkips?.includes(name) === true,
     }
     built.set(name, buildRow(stripControl(name), kindOf(name, defaultName), name === currentName, facts))
   }

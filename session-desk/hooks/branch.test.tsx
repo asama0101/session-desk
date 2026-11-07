@@ -111,33 +111,33 @@ const LETTER = { done: 'd', todo: 't', unknown: 'u', skipped: 's' } as const
 const letters = (f: Facts) => computeStages(f).map(s => LETTER[s.status]).join('')
 
 const CASES: readonly (readonly [string, Facts, string, number | null, string])[] = [
-  ['1 fresh branch', BARE, 'dttttttt', 2, '次: 編集'],
-  ['2 uncommitted changes', { ...BARE, dirty: true }, 'ddtttttt', 3, '編集中'],
-  ['3 committed, not pushed', { ...BARE, ahead: 2 }, 'dddttttt', 4, '次: push'],
-  ['4 pushed, no PR', F0, 'ddddtttt', 5, '次: PR を作る'],
-  ['5 open PR, no review setting', { ...F0, pr: pr({}) }, 'dddddstt', 7, 'マージ待ち'],
-  ['6 open PR, approved', { ...F0, pr: pr({ reviewDecision: 'APPROVED' }) }, 'ddddddtt', 7, 'マージ待ち'],
-  ['7 open PR, review required', { ...F0, pr: pr({ reviewDecision: 'REVIEW_REQUIRED' }) }, 'dddddttt', 6, '次: レビューを待つ'],
-  ['8 open PR, changes requested', { ...F0, pr: pr({ reviewDecision: 'CHANGES_REQUESTED' }) }, 'dddddttt', 6, '次: 指摘を直す'],
-  ['9 draft PR', { ...F0, pr: pr({ isDraft: true }) }, 'dddddttt', 6, '次: 草稿を解除する'],
-  ['10 merged PR', { ...F0, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
-  ['11 merged PR with uncommitted changes', { ...F0, dirty: true, pr: pr({ state: 'MERGED' }) }, 'ddtddddt', 3, '編集中'],
-  ['12 closed PR', { ...F0, pr: pr({ state: 'CLOSED' }) }, 'ddddtttt', 5, '次: PR を作り直す'],
-  ['13 pushed, edited again, open PR', { ...F0, dirty: true, pr: pr({}) }, 'ddtddstt', 3, '編集中'],
-  ['14 gh unavailable', { ...F0, prKnown: false }, 'dddduuuu', null, '今: PR 以降は不明'],
-  ['15 base unknown', { ...F0, ahead: null }, 'duuutttt', null, '今: 判定できない'],
-  ['16 push unknown', { ...F0, pushed: null }, 'dddutttt', 5, '次: PR を作る'],
-  ['17 merged, base unknown', { ...F0, ahead: null, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
-  ['18 status failed', { ...F0, dirty: null }, 'duudtttt', null, '今: 判定できない'],
-  ['19 base unknown and gh unavailable', { ...F0, ahead: null, prKnown: false }, 'duuuuuuu', null, '今: 判定できない'],
-  ['20 merged, push unknown', { ...F0, ahead: 0, pushed: null, pr: pr({ state: 'MERGED' }) }, 'dddddddt', 8, '次: ブランチを削除'],
+  ['1 fresh branch', BARE, 'dtttttttt', 2, '次: 編集'],
+  ['2 uncommitted changes', { ...BARE, dirty: true }, 'ddttttttt', 3, '編集中'],
+  ['3 committed, not pushed', { ...BARE, ahead: 2 }, 'dddtttttt', 4, '次: push'],
+  ['4 pushed, no PR', F0, 'ddddttttt', 5, '次: PR を作る'],
+  ['5 open PR, no review setting', { ...F0, pr: pr({}) }, 'dddddsttt', 7, 'マージ待ち'],
+  ['6 open PR, approved', { ...F0, pr: pr({ reviewDecision: 'APPROVED' }) }, 'ddddddttt', 7, 'マージ待ち'],
+  ['7 open PR, review required', { ...F0, pr: pr({ reviewDecision: 'REVIEW_REQUIRED' }) }, 'dddddtttt', 6, '次: レビューを待つ'],
+  ['8 open PR, changes requested', { ...F0, pr: pr({ reviewDecision: 'CHANGES_REQUESTED' }) }, 'dddddtttt', 6, '次: 指摘を直す'],
+  ['9 draft PR', { ...F0, pr: pr({ isDraft: true }) }, 'dddddtttt', 6, '次: 草稿を解除する'],
+  ['10 merged PR', { ...F0, pr: pr({ state: 'MERGED' }) }, 'dddddddtt', 8, '次: リリース'],
+  ['11 merged PR with uncommitted changes', { ...F0, dirty: true, pr: pr({ state: 'MERGED' }) }, 'ddtddddtt', 3, '編集中'],
+  ['12 closed PR', { ...F0, pr: pr({ state: 'CLOSED' }) }, 'ddddttttt', 5, '次: PR を作り直す'],
+  ['13 pushed, edited again, open PR', { ...F0, dirty: true, pr: pr({}) }, 'ddtddsttt', 3, '編集中'],
+  ['14 gh unavailable', { ...F0, prKnown: false }, 'dddduuuuu', null, '今: PR 以降は不明'],
+  ['15 base unknown', { ...F0, ahead: null }, 'duuuttttt', null, '今: 判定できない'],
+  ['16 push unknown', { ...F0, pushed: null }, 'ddduttttt', 5, '次: PR を作る'],
+  ['17 merged, base unknown', { ...F0, ahead: null, pr: pr({ state: 'MERGED' }) }, 'dddddddtt', 8, '次: リリース'],
+  ['18 status failed', { ...F0, dirty: null }, 'duudttttt', null, '今: 判定できない'],
+  ['19 base unknown and gh unavailable', { ...F0, ahead: null, prKnown: false }, 'duuuuuuuu', null, '今: 判定できない'],
+  ['20 merged, push unknown', { ...F0, ahead: 0, pushed: null, pr: pr({ state: 'MERGED' }) }, 'dddddddtt', 8, '次: リリース'],
 ]
 
 for (const [name, facts, expected, nowId, nowText] of CASES) {
   test(`stages case ${name}`, async () => {
     const stages = computeStages(facts)
-    expect(stages.length).toBe(8)
-    expect(stages.map(s => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect(stages.length).toBe(9)
+    expect(stages.map(s => s.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
     expect(letters(facts)).toBe(expected)
     expect(nowOf(stages, facts)).toEqual({ id: nowId, text: nowText })
   })
@@ -152,6 +152,7 @@ test('stage labels follow git-flow', async () => {
     'PR',
     'レビュー',
     'マージ',
+    'リリース',
     '削除',
   ])
 })
@@ -183,6 +184,7 @@ test('dates come from the facts and the PR; only done stages carry one; a missin
     '2026-11-05T13:30:00+09:00',
     '2026-11-05T14:00:00+09:00',
     null,
+    null,
   ])
   const open = computeStages({ ...F0, lastCommitAt: 'x', pr: pr({}) })
   expect(open[6]?.at).toBe(null)
@@ -198,7 +200,7 @@ test('buildRow builds stages and now; a default branch has no stages and reads �
   const row = buildRow('feat/x', 'feat', true, F0)
   expect(row.name).toBe('feat/x')
   expect(row.isCurrent).toBe(true)
-  expect(row.stages.length).toBe(8)
+  expect(row.stages.length).toBe(9)
   expect(row.now).toEqual({ id: 5, text: '次: PR を作る' })
   const main = buildRow('main', 'default', false, F0)
   expect(main.stages).toEqual([])
@@ -244,11 +246,11 @@ test('adoptPr reports unknown when a merged PR cannot be related and nothing els
 
 // リモートがないとき: push 以降は対象外（skipped）。
 const NO_REMOTE_CASES: readonly (readonly [string, Facts, string, number | null, string])[] = [
-  ['fresh branch', { ...BARE, hasRemote: false }, 'dttsssss', 2, '次: 編集'],
-  ['uncommitted changes', { ...BARE, hasRemote: false, dirty: true }, 'ddtsssss', 3, '編集中'],
-  ['committed', { ...BARE, hasRemote: false, ahead: 2 }, 'dddsssss', null, 'commit 済み（リモートなし）'],
-  ['committed and edited again', { ...BARE, hasRemote: false, ahead: 2, dirty: true }, 'ddtsssss', 3, '編集中'],
-  ['base unknown', { ...BARE, hasRemote: false, ahead: null }, 'duuussss', null, '今: 判定できない'],
+  ['fresh branch', { ...BARE, hasRemote: false }, 'dttssssss', 2, '次: 編集'],
+  ['uncommitted changes', { ...BARE, hasRemote: false, dirty: true }, 'ddtssssss', 3, '編集中'],
+  ['committed', { ...BARE, hasRemote: false, ahead: 2 }, 'dddssssss', null, 'commit 済み（リモートなし）'],
+  ['committed and edited again', { ...BARE, hasRemote: false, ahead: 2, dirty: true }, 'ddtssssss', 3, '編集中'],
+  ['base unknown', { ...BARE, hasRemote: false, ahead: null }, 'duuusssss', null, '今: 判定できない'],
 ]
 
 for (const [name, facts, expected, nowId, nowText] of NO_REMOTE_CASES) {
@@ -318,7 +320,10 @@ test('nextOf: editing, push, PR (also after a closed PR) and delete each get a b
     expect(next?.label).toBe('▶ PR を作る')
     expect(next?.prompt).toBe('ブランチ「feat/x」の PR を既定ブランチ向けに作ってください')
   }
-  const del = nextOf(rowOf({ ...F0, pr: pr({ state: 'MERGED' }) }))
+  const release = nextOf(rowOf({ ...F0, pr: pr({ state: 'MERGED' }) }))
+  expect(release?.label).toBe('▶ リリースする')
+  expect(release?.prompt).toBe('ブランチ「feat/x」のマージ済みの変更をリリースしてください（version を上げる PR、タグ、Release の順）')
+  const del = nextOf(rowOf({ ...F0, pr: pr({ state: 'MERGED', mergedAt: '2026-11-05T14:00:00+09:00' }), tags: { known: true, latestAt: '2026-11-05T15:00:00+09:00' } }))
   expect(del?.label).toBe('▶ ブランチを削除')
   expect(del?.prompt).toBe('マージ済みの作業ブランチ「feat/x」を削除してください')
 })
@@ -344,4 +349,38 @@ test('nextOf: the key changes when the state moves on; the PR request names the 
   expect(a?.key).not.toBe(nextOf(rowOf({ ...BARE, ahead: 3, dirty: true }))?.key)
   expect(a?.key).not.toBe(nextOf(rowOf({ ...BARE, ahead: 2 }))?.key)
   expect(nextOf(rowOf(F0), 'master')?.prompt).toBe('ブランチ「feat/x」の PR を master 向けに作ってください')
+})
+
+// リリースの段階（マージと削除のあいだ）。マージ済みなら、マージより後にタグが作られていれば済み。
+const MERGED_AT = '2026-11-05T14:00:00+09:00'
+const merged = (over: Partial<Facts> = {}) => ({ ...F0, pr: pr({ state: 'MERGED', mergedAt: MERGED_AT }), ...over })
+
+test('release stage: a merged PR with no tag yet is waiting for a release; the branch deletion comes after it', async () => {
+  const f = merged({ tags: { known: true, latestAt: null } })
+  expect(letters(f)).toBe('ddddddd' + 'tt')
+  expect(nowOf(computeStages(f), f)).toEqual({ id: 8, text: '次: リリース' })
+})
+
+test('release stage: a tag made after the merge means the release is done, and carries the tag date', async () => {
+  const f = merged({ tags: { known: true, latestAt: '2026-11-05T15:00:00+09:00' } })
+  expect(letters(f)).toBe('ddddddd' + 'dt')
+  expect(computeStages(f)[7]?.at).toBe('2026-11-05T15:00:00+09:00')
+  expect(nowOf(computeStages(f), f)).toEqual({ id: 9, text: '次: ブランチを削除' })
+  // マージの前に作られたタグでは、済みにならない。
+  expect(letters(merged({ tags: { known: true, latestAt: '2026-11-05T13:00:00+09:00' } }))).toBe('ddddddd' + 'tt')
+})
+
+test('release stage: unknown tags leave it unknown without blocking the deletion; 今はしない skips it', async () => {
+  const unknown = merged({ tags: { known: false, latestAt: null } })
+  expect(letters(unknown)).toBe('ddddddd' + 'ut')
+  expect(nowOf(computeStages(unknown), unknown)).toEqual({ id: 9, text: '次: ブランチを削除' })
+  const skipped = merged({ releaseSkipped: true })
+  expect(letters(skipped)).toBe('ddddddd' + 'st')
+  expect(nowOf(computeStages(skipped), skipped)).toEqual({ id: 9, text: '次: ブランチを削除' })
+})
+
+test('release stage: before the merge it follows the deletion (todo; unknown when the PR is unknown); no remote skips it', async () => {
+  expect(letters({ ...F0, pr: pr({}) })).toBe('ddddd' + 'stt' + 't')
+  expect(letters({ ...F0, prKnown: false })).toBe('dddd' + 'uuuu' + 'u')
+  expect(letters({ ...BARE, hasRemote: false, ahead: 2 })).toBe('ddd' + 'ssssss')
 })

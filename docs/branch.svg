@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 522" width="960" height="522" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 544" width="960" height="544" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">「Git」タブ（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下に「ローカル」のフォルダと、「リモート」の名前と URL（クリックできるリンク）がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: push」。その下に、選んだブランチの名前と、経過が 8 段階で並ぶ。今の段階の行の右端に、「▶ push する」のボタンがある。各段階は縦の線（┌ ├ └）でつながり、日時は右端にある。済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に、git と gh を読んだ時刻がある。一番下に、git と gh を読んだ時刻がある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは「Git」タブを開いている。見出しは「ブランチ 3」で、その下に「ローカル」のフォルダと、「リモート」の名前と URL（クリックできるリンク）がある。ブランチの一覧は 3 行で、選んだ feat/login は「↑2  次: push」。その下に、選んだブランチの名前と、経過が 9 段階で並ぶ。今の段階の行の右端に、「▶ push する」のボタンがある。各段階は縦の線（┌ ├ └）でつながり、日時は右端にある。済は緑の ✓、今は黄色の ●、これからは灰色の ○。最後に、git と gh を読んだ時刻がある。一番下に、git と gh を読んだ時刻がある。</desc>
 
   <!-- 端末 -->
-  <rect x="0" y="0" width="960" height="522" rx="10" fill="#1e1e1e"/>
-  <rect x="0.5" y="0.5" width="959" height="521" rx="10" fill="none" stroke="#3c3c3c"/>
+  <rect x="0" y="0" width="960" height="544" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="959" height="543" rx="10" fill="none" stroke="#3c3c3c"/>
 
   <!-- 左: 会話と入力欄 -->
   <text x="24" y="40" fill="#858585">&gt; commit して、push して</text>
@@ -19,7 +19,7 @@
   <text x="40" y="450" fill="#858585">&gt;</text>
 
   <!-- 区切り -->
-  <line x1="400" y1="0" x2="400" y2="500" stroke="#3c3c3c"/>
+  <line x1="400" y1="0" x2="400" y2="544" stroke="#3c3c3c"/>
 
   <!-- 右: パネル -->
   <text x="424" y="40" fill="#d4d4d4" font-weight="bold">Session Desk</text>
@@ -54,8 +54,9 @@
   <text x="424" y="378" fill="#5a5a5a">├</text><text x="446" y="378" fill="#858585">○ PR</text>
   <text x="424" y="400" fill="#5a5a5a">├</text><text x="446" y="400" fill="#858585">○ レビュー</text>
   <text x="424" y="422" fill="#5a5a5a">├</text><text x="446" y="422" fill="#858585">○ マージ</text>
-  <text x="424" y="444" fill="#5a5a5a">└</text><text x="446" y="444" fill="#858585">○ 削除</text>
+  <text x="424" y="444" fill="#5a5a5a">├</text><text x="446" y="444" fill="#858585">○ リリース</text>
+  <text x="424" y="466" fill="#5a5a5a">└</text><text x="446" y="466" fill="#858585">○ 削除</text>
 
   <!-- 最後に読んだ時刻 -->
-  <text x="424" y="494" fill="#858585">git 14:21:05 / gh 14:21:00</text>
+  <text x="424" y="516" fill="#858585">git 14:21:05 / gh 14:21:00</text>
 </svg>
