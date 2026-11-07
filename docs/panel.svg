@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 500" width="960" height="500" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">Session Desk のパネル（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは定型文タブを開いていて、上に新しい定型文を入れる入力欄があり、3 件の定型文に「送信」「上へ」「下へ」「削除」のボタン（上へ・下へはグレー）が付いている（先頭に「上へ」、末尾に「下へ」は出ない）。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルの上にタブが 3 つ（定型文・履歴・ブランチ）あり、定型文タブを開いていて、上に新しい定型文を入れる入力欄があり、3 件の定型文に「送信」「上へ」「下へ」「削除」のボタン（上へ・下へはグレー）が付いている（先頭に「上へ」、末尾に「下へ」は出ない）。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
 
   <!-- 端末 -->
   <rect x="0" y="0" width="960" height="500" rx="10" fill="#1e1e1e"/>
@@ -30,6 +30,7 @@
   <text x="632" y="82" fill="#b1b9f9">▸</text>
   <text x="652" y="82" fill="#d4d4d4" font-weight="bold">定型文</text>
   <text x="732" y="82" fill="#858585">履歴</text>
+  <text x="792" y="82" fill="#858585">ブランチ</text>
 
   <!-- 入力欄（新しい定型文を足す） -->
   <rect x="632" y="104" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
