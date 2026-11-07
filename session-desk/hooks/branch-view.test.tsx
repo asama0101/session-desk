@@ -62,6 +62,7 @@ type Over = {
   remote?: object
   diff?: string
   status?: string
+  symref?: string
 }
 
 function engine(on: any, over: Over = {}) {
@@ -87,7 +88,7 @@ function engine(on: any, over: Over = {}) {
     const key = argv[0] === 'git' ? argv.slice(2).join(' ') : argv.join(' ')
     let result: { exitCode: number; stdout: string; stderr?: string } = { exitCode: 0, stdout: '' }
     if (key === 'rev-parse --git-dir') result = { exitCode: 0, stdout: '.git\n', ...over.repo }
-    else if (key === 'symbolic-ref -q refs/remotes/origin/HEAD') result = { exitCode: 0, stdout: 'refs/remotes/origin/main\n' }
+    else if (key === 'symbolic-ref -q refs/remotes/origin/HEAD') result = { exitCode: 0, stdout: over.symref ?? 'refs/remotes/origin/main\n' }
     else if (key === 'symbolic-ref -q HEAD') result = { exitCode: 0, stdout: 'refs/heads/feat/a\n', ...over.head }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(objectname)')) result = { exitCode: 0, stdout: over.refs ?? REFS }
     else if (key.startsWith('for-each-ref --format=%(refname)%09%(ahead-behind:')) result = { exitCode: 0, stdout: AHEAD }
@@ -299,6 +300,13 @@ test('the default branch row shows its difference from origin too', async ($, on
   await ui.unmount()
 })
 
+// 質問ごとに key が違うので、ボタンは言葉で探す。
+async function pressText(ui: any, text: string) {
+  const button = await ui.find({ type: 'Button', text })
+  await ui.press({ key: button.key })
+}
+const hasText = async (ui: any, text: string) => (await ui.find({ type: 'Button', text })) !== undefined
+
 const textJson = async (ui: any, text: string) => JSON.stringify(await ui.find({ type: 'Text', text }))
 
 test('colors: done is green, now is yellow and bold, todo is grey', async ($, on) => {
@@ -352,12 +360,12 @@ test('yes/no: the next step on the current branch is asked, and yes sends the re
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('push しますか？')
-  expect(await ui.find({ key: 'act-yes' })).toBeDefined()
-  expect(await ui.find({ key: 'act-no' })).toBeDefined()
-  await ui.press({ key: 'act-yes' })
+  expect(await hasText(ui, 'はい')).toBe(true)
+  expect(await hasText(ui, 'いいえ')).toBe(true)
+  await pressText(ui, 'はい')
   await flush()
-  expect(e.submitted).toEqual(['はい。現在のブランチを push してください'])
-  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  expect(e.submitted).toEqual(['はい。ブランチ feat/a を push してください'])
+  expect(await hasText(ui, 'はい')).toBe(false)
   expect(await texts(ui)).not.toContain('push しますか？')
   await ui.unmount()
 })
@@ -366,10 +374,10 @@ test('yes/no: no sends nothing and hides the question', async ($, on) => {
   const e = engine(on)
   await start($)
   const ui = await open($, e.calls)
-  await ui.press({ key: 'act-no' })
+  await pressText(ui, 'いいえ')
   await flush()
   expect(e.submitted).toEqual([])
-  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  expect(await hasText(ui, 'はい')).toBe(false)
   await ui.unmount()
 })
 
@@ -378,9 +386,9 @@ test('yes/no: editing asks whether to commit', async ($, on) => {
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('commit しますか？')
-  await ui.press({ key: 'act-yes' })
+  await pressText(ui, 'はい')
   await flush()
-  expect(e.submitted).toEqual(['はい。未コミットの変更を commit してください'])
+  expect(e.submitted).toEqual(['はい。ブランチ feat/a の未コミットの変更を commit してください'])
   await ui.unmount()
 })
 
@@ -390,7 +398,7 @@ test('yes/no: nothing is asked for a branch that is not the current one', async 
   const ui = await open($, e.calls)
   await ui.press({ key: 'branch-docs/b' })
   await flush()
-  expect(await ui.find({ key: 'act-yes' })).toBeUndefined()
+  expect(await hasText(ui, 'はい')).toBe(false)
   await ui.unmount()
 })
 
@@ -399,11 +407,11 @@ test('yes/no: deleting needs a second confirmation before anything is sent', asy
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('削除しますか？')
-  await ui.press({ key: 'act-yes' })
+  await pressText(ui, 'はい')
   await flush()
   expect(e.submitted).toEqual([])
   expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
-  await ui.press({ key: 'act-confirm' })
+  await pressText(ui, '削除する')
   await flush()
   expect(e.submitted).toEqual(['はい。マージ済みの作業ブランチ docs/b を削除してください'])
   await ui.unmount()
@@ -413,11 +421,25 @@ test('yes/no: backing out of the second confirmation sends nothing', async ($, o
   const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
   await start($)
   const ui = await open($, e.calls)
-  await ui.press({ key: 'act-yes' })
+  await pressText(ui, 'はい')
   await flush()
-  await ui.press({ key: 'act-cancel' })
+  await pressText(ui, 'やめる')
   await flush()
   expect(e.submitted).toEqual([])
-  expect(await ui.find({ key: 'act-confirm' })).toBeUndefined()
+  expect(await hasText(ui, '削除する')).toBe(false)
+  await ui.unmount()
+})
+
+test('yes/no: the PR request names the repository default branch (master)', async ($, on) => {
+  const refs =
+    'refs/heads/feat/a\tA1\t2026-11-05T11:40:00+09:00\nrefs/heads/master\tM1\t2026-11-01T09:00:00+09:00\n' +
+    'refs/remotes/origin/feat/a\tA1\t2026-11-05T11:40:00+09:00\nrefs/remotes/origin/master\tM1\t2026-11-01T09:00:00+09:00\n'
+  const e = engine(on, { refs, symref: 'refs/remotes/origin/master\n' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await texts(ui)).toContain('PR を作りますか？')
+  await pressText(ui, 'はい')
+  await flush()
+  expect(e.submitted).toEqual(['はい。ブランチ feat/a の PR を master 向けに作ってください'])
   await ui.unmount()
 })

@@ -305,7 +305,7 @@ export type Action = {
 }
 
 // いまチェックアウトしているブランチの「今」が、commit・push・PR・削除のどれかなら、yes/no で聞く内容を返す。
-export function actionOf(row: BranchRow): Action | null {
+export function actionOf(row: BranchRow, base: string | null = null): Action | null {
   if (!row.isCurrent || row.kind === 'default') {
     return null
   }
@@ -313,12 +313,12 @@ export function actionOf(row: BranchRow): Action | null {
   switch (row.now.id) {
     case 3:
       return row.facts.dirty === true
-        ? { key, kind: 'commit', question: 'commit しますか？', prompt: 'はい。未コミットの変更を commit してください' }
+        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ ${row.name} の未コミットの変更を commit してください` }
         : null
     case 4:
-      return { key, kind: 'push', question: 'push しますか？', prompt: 'はい。現在のブランチを push してください' }
+      return { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ ${row.name} を push してください` }
     case 5:
-      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: 'はい。現在のブランチの PR を main 向けに作ってください' }
+      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ ${row.name} の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
     case 8:
       return {
         key,
@@ -329,4 +329,34 @@ export function actionOf(row: BranchRow): Action | null {
     default:
       return null
   }
+}
+
+// 質問への答え方。画面の押下は古いことがあり、二度押しもあるので、送る前に、いまの状態と照らす。
+//   yes: 「はい」。削除なら、まだ送らず 2 段目の確認へ（confirm）。
+//   confirm: 削除の 2 段目の「削除する」。1 段目を済ませた同じ質問のときだけ送る。
+//   no: 「いいえ」「やめる」。
+export type Step = 'yes' | 'no' | 'confirm'
+
+export function decideAnswer(
+  step: Step,
+  action: Action,
+  dismissed: readonly string[],
+  confirm: string | null,
+  current: BranchRow | undefined,
+): 'ignore' | 'dismiss' | 'confirm' | 'send' {
+  if (dismissed.includes(action.key)) {
+    return 'ignore'
+  }
+  if (step === 'no') {
+    return 'dismiss'
+  }
+  // 押した質問が、いまのブランチの質問と同じときだけ進む（段階が進んだ・別のブランチになったときは何もしない）。
+  if (current === undefined || actionOf(current)?.key !== action.key) {
+    return 'ignore'
+  }
+  if (step === 'yes') {
+    return action.kind === 'delete' ? 'confirm' : 'send'
+  }
+
+  return action.kind === 'delete' && confirm === action.key ? 'send' : 'ignore'
 }

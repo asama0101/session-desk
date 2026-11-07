@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import type { Action } from './branch'
+import { decideAnswer } from './branch'
+import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
 import { collect, enrich } from './git'
 import type { Run, Snapshot } from './git'
@@ -109,15 +110,21 @@ async function selectBranch($: any, name: string) {
 }
 
 // 「はい」「いいえ」を答える。「はい」は Claude に依頼を送る（削除だけ、確認を 2 段にする）。
-async function answerAction($: any, action: Action, yes: boolean) {
+// 押下が古い・二度押しのときは、decideAnswer が何もしないと決める。
+async function answerAction($: any, action: Action, step: Step) {
   const now = await read($, branchAct)
-  if (yes && action.kind === 'delete' && now.confirm !== action.key) {
+  const snap = (await read($, snapshot)) as Snapshot | null
+  const decision = decideAnswer(step, action, now.dismissed, now.confirm, snap?.branches.find(b => b.isCurrent))
+  if (decision === 'ignore') {
+    return
+  }
+  if (decision === 'confirm') {
     await update($, branchAct, state => ({ ...state, confirm: action.key }))
 
     return
   }
   await update($, branchAct, state => ({ dismissed: [...state.dismissed, action.key], confirm: null }))
-  if (yes) {
+  if (decision === 'send') {
     void $.prompt.submit({ text: action.prompt })
   }
 }
@@ -252,8 +259,9 @@ export const register: Register = on => {
           act: {
             dismissed: act.dismissed,
             confirm: act.confirm,
-            onYes: action => void answerAction($, action, true),
-            onNo: action => void answerAction($, action, false),
+            onYes: action => void answerAction($, action, 'yes'),
+            onNo: action => void answerAction($, action, 'no'),
+            onConfirm: action => void answerAction($, action, 'confirm'),
           },
         },
       )

@@ -99,7 +99,13 @@ type Args = {
   offsetMin: number
   onSelect(name: string): void
   // yes/no。dismissed は「いいえ」や「はい」を押した質問の key、confirm は 2 段目の確認中の key。
-  act: { dismissed: readonly string[]; confirm: string | null; onYes(action: Action): void; onNo(action: Action): void }
+  act: {
+    dismissed: readonly string[]
+    confirm: string | null
+    onYes(action: Action): void
+    onNo(action: Action): void
+    onConfirm(action: Action): void
+  }
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -141,7 +147,8 @@ export function renderBranchTab(ui: Ui, a: Args) {
     </Box>
   )
 
-  const action = chosen === undefined ? null : actionOf(chosen)
+  const defaultName = snap.branches.find(b => b.kind === 'default')?.name ?? null
+  const action = chosen === undefined ? null : actionOf(chosen, defaultName)
   const asking = action !== null && chosen !== undefined && !a.act.dismissed.includes(action.key)
 
   const detail = (
@@ -162,10 +169,10 @@ export function renderBranchTab(ui: Ui, a: Args) {
       {asking && chosen !== undefined && action !== null && a.act.confirm === action.key && (
         <Box gap={2}>
           <Text color="error">{stripControl(`本当に ${chosen.name} を削除しますか？`)}</Text>
-          <Button key="act-confirm" plain label="削除する" onPress={() => a.act.onYes(action)}>
+          <Button key={`act-confirm:${action.key}`} plain label="削除する" onPress={() => a.act.onConfirm(action)}>
             <Text color="error">削除する</Text>
           </Button>
-          <Button key="act-cancel" plain label="やめる" onPress={() => a.act.onNo(action)}>
+          <Button key={`act-cancel:${action.key}`} plain label="やめる" onPress={() => a.act.onNo(action)}>
             <Text>やめる</Text>
           </Button>
         </Box>
@@ -173,10 +180,10 @@ export function renderBranchTab(ui: Ui, a: Args) {
       {asking && action !== null && a.act.confirm !== action.key && (
         <Box gap={2}>
           <Text color="warning">{action.question}</Text>
-          <Button key="act-yes" plain label="はい" onPress={() => a.act.onYes(action)}>
+          <Button key={`act-yes:${action.key}`} plain label="はい" onPress={() => a.act.onYes(action)}>
             <Text color="success">はい</Text>
           </Button>
-          <Button key="act-no" plain label="いいえ" onPress={() => a.act.onNo(action)}>
+          <Button key={`act-no:${action.key}`} plain label="いいえ" onPress={() => a.act.onNo(action)}>
             <Text color="error">いいえ</Text>
           </Button>
         </Box>

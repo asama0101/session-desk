@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import {
   actionOf,
   adoptPr,
+  decideAnswer,
   buildRow,
   parseRemotes,
   tidyUrl,
@@ -296,14 +297,14 @@ test('actionOf: uncommitted changes ask whether to commit', async () => {
   const action = actionOf(rowOf({ ...BARE, ahead: 2, dirty: true }))
   expect(action?.kind).toBe('commit')
   expect(action?.question).toBe('commit しますか？')
-  expect(action?.prompt).toBe('はい。未コミットの変更を commit してください')
+  expect(action?.prompt).toBe('はい。ブランチ feat/x の未コミットの変更を commit してください')
 })
 
 test('actionOf: committed but not pushed asks whether to push', async () => {
   const action = actionOf(rowOf({ ...BARE, ahead: 2 }))
   expect(action?.kind).toBe('push')
   expect(action?.question).toBe('push しますか？')
-  expect(action?.prompt).toBe('はい。現在のブランチを push してください')
+  expect(action?.prompt).toBe('はい。ブランチ feat/x を push してください')
 })
 
 test('actionOf: pushed without a PR, and a closed PR, ask whether to create a PR', async () => {
@@ -311,7 +312,7 @@ test('actionOf: pushed without a PR, and a closed PR, ask whether to create a PR
     const action = actionOf(rowOf(facts))
     expect(action?.kind).toBe('pr')
     expect(action?.question).toBe('PR を作りますか？')
-    expect(action?.prompt).toBe('はい。現在のブランチの PR を main 向けに作ってください')
+    expect(action?.prompt).toBe('はい。ブランチ feat/x の PR を既定ブランチ向けに作ってください')
   }
 })
 
@@ -338,4 +339,41 @@ test('actionOf: the key changes when the state moves on, so a dismissed question
   const c = actionOf(rowOf({ ...BARE, ahead: 2 }))
   expect(a?.key).not.toBe(b?.key)
   expect(a?.key).not.toBe(c?.key)
+})
+
+test('actionOf: the PR request names the default branch it was given (master, develop, ...)', async () => {
+  expect(actionOf(rowOf(F0), 'master')?.prompt).toBe('はい。ブランチ feat/x の PR を master 向けに作ってください')
+  expect(actionOf(rowOf(F0), null)?.prompt).toBe('はい。ブランチ feat/x の PR を既定ブランチ向けに作ってください')
+})
+
+// 「はい」「いいえ」の扱い。画面の押下が古くても、二度押しでも、確認を飛ばして送らない。
+const PUSH = actionOf(rowOf({ ...BARE, ahead: 2 }))!
+const DELETE = actionOf(rowOf({ ...F0, pr: pr({ state: 'MERGED' }) }))!
+const CURRENT_PUSH = rowOf({ ...BARE, ahead: 2 })
+const CURRENT_DELETE = rowOf({ ...F0, pr: pr({ state: 'MERGED' }) })
+
+test('decideAnswer: yes sends for push, commit and PR; no only dismisses', async () => {
+  expect(decideAnswer('yes', PUSH, [], null, CURRENT_PUSH)).toBe('send')
+  expect(decideAnswer('no', PUSH, [], null, CURRENT_PUSH)).toBe('dismiss')
+})
+
+test('decideAnswer: deleting asks again on yes, and only the confirm step sends', async () => {
+  expect(decideAnswer('yes', DELETE, [], null, CURRENT_DELETE)).toBe('confirm')
+  expect(decideAnswer('confirm', DELETE, [], DELETE.key, CURRENT_DELETE)).toBe('send')
+  // 確認の前に、古い「はい」が届いても、送らない。
+  expect(decideAnswer('confirm', DELETE, [], null, CURRENT_DELETE)).toBe('ignore')
+  // 別の質問の確認中に届いても、送らない。
+  expect(decideAnswer('confirm', DELETE, [], 'other:8:1', CURRENT_DELETE)).toBe('ignore')
+  // push に confirm は使えない。
+  expect(decideAnswer('confirm', PUSH, [], PUSH.key, CURRENT_PUSH)).toBe('ignore')
+})
+
+test('decideAnswer: an answered question is ignored (double press), a stale question is ignored (the state moved on)', async () => {
+  expect(decideAnswer('yes', PUSH, [PUSH.key], null, CURRENT_PUSH)).toBe('ignore')
+  expect(decideAnswer('no', PUSH, [PUSH.key], null, CURRENT_PUSH)).toBe('ignore')
+  expect(decideAnswer('confirm', DELETE, [DELETE.key], DELETE.key, CURRENT_DELETE)).toBe('ignore')
+  // 押した質問の key が、いまのブランチの質問と違う（段階が進んだ・別のブランチになった）。
+  expect(decideAnswer('yes', PUSH, [], null, rowOf({ ...BARE, ahead: 3 }))).toBe('ignore')
+  expect(decideAnswer('yes', PUSH, [], null, rowOf({ ...BARE, ahead: 2 }, false))).toBe('ignore')
+  expect(decideAnswer('yes', PUSH, [], null, undefined)).toBe('ignore')
 })
