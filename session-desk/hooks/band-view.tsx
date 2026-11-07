@@ -144,7 +144,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
         )}
         {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
-          <Box flexDirection="column" marginTop={1}>
+          <Box flexDirection="column">
             <Box flexDirection="column">
               {bd.rows.map(row => (
                 <Box key={`bd-${row.id}`} gap={1}>

@@ -240,12 +240,12 @@ test('every rule has one blank row above and below it', async () => {
   for (const r of rules) expect(r.props.marginY).toBe(1)
 })
 
-test('the legend is one blank row below the bar, and the compact line one blank row below the legend', async () => {
+test('the legend sits right under the bar; the compact line is one blank row below the legend', async () => {
   const tree = draw({ context: CTX(50), breakdown: BREAKDOWN() })
   const gaps = find(tree, n => n.props?.marginTop === 1)
-  expect(gaps).toHaveLength(2)
-  expect(textsOf(gaps[0])).toContain('Messages')
-  expect(textsOf(gaps[1])).toContain('概算')
+  expect(gaps).toHaveLength(1)
+  expect(textsOf(gaps[0])).toContain('概算')
+  expect(textsOf(gaps[0])).not.toContain('Messages')
 })
 
 test('detail closed hides the per-item rows', async () => {
