@@ -423,3 +423,31 @@ test('a fork that never answers lifts the guard after 30 s, with no toast and no
   expect(s.toasts).toEqual([])
   await ui.unmount()
 })
+
+test('a late fork turn.complete after the 30 s timeout is not taken for a real turn, and starts no second fork', async ($, on) => {
+  const s = engine(on)
+  s.forks.push({ hold: true })
+  await start($)
+  const ui = await mount($)
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await $.turn.complete(done({ turnId: 't1' }))
+  await settle()
+  // 時間切れで印が外れる。そのあと、本物の次のターンが始まる。
+  s.wake()
+  await settle()
+  await $.turn.start({ text: 'again', turnId: 't2' })
+  await settle()
+  expect(await draw(ui)).toContain('実行中')
+  // 遅れて届いた fork 自身の turn.complete（本物の開始を見ていないターンの完了）。
+  await $.turn.complete(done({ turnId: 'f1' }))
+  await settle()
+  expect(await draw(ui)).toContain('実行中')
+  expect(await draw(ui)).not.toContain('停止中')
+  expect(s.requests.length).toBe(1)
+  // 本物の t2 の完了は、ふつうに扱う。
+  await $.turn.complete(done({ turnId: 't2' }))
+  await settle()
+  expect(await draw(ui)).toContain('停止中')
+  expect(s.requests.length).toBe(2)
+  await ui.unmount()
+})
