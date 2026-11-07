@@ -65,12 +65,22 @@ type Over = {
   symref?: string
   refsTruncated?: boolean
   refsExit?: number
+  submitFails?: boolean
 }
 
 function engine(on: any, over: Over = {}) {
   const calls: string[] = []
   const submitted: string[] = []
+  const toasts: string[] = []
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
   on('prompt.submit', (_: any, e: any) => {
+    if (over.submitFails) {
+      throw new Error('refused')
+    }
     submitted.push(e.text)
 
     return { text: e.text }
@@ -105,7 +115,7 @@ function engine(on: any, over: Over = {}) {
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls, submitted }
+  return { calls, submitted, toasts }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -462,5 +472,44 @@ test('the problem texts tell a git failure apart from a timeout', async ($, on) 
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('git の実行に失敗しました')
+  await ui.unmount()
+})
+
+test('yes/no: a half-finished delete confirmation does not follow you to another branch', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
+  await ui.press({ key: 'branch-main' })
+  await flush()
+  await ui.press({ key: 'branch-docs/b' })
+  await settle(e.calls)
+  const lines = await texts(ui)
+  expect(lines).toContain('削除しますか？')
+  expect(lines).not.toContain('本当に docs/b を削除しますか？')
+  await ui.unmount()
+})
+
+test('yes/no: if the request cannot be sent, the user is told', async ($, on) => {
+  const e = engine(on, { submitFails: true })
+  await start($)
+  const ui = await open($, e.calls)
+  await pressText(ui, 'はい')
+  await flush()
+  await flush()
+  expect(e.toasts).toEqual(['依頼を送れませんでした'])
+  await ui.unmount()
+})
+
+test('yes/no: the second delete confirmation can wrap in a narrow panel', async ($, on) => {
+  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.drawn())).not.toContain('"flexWrap":"wrap"')
+  await pressText(ui, 'はい')
+  await flush()
+  expect(JSON.stringify(await ui.drawn())).toContain('"flexWrap":"wrap"')
   await ui.unmount()
 })

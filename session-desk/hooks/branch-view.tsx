@@ -170,7 +170,7 @@ export function renderBranchTab(ui: Ui, a: Args) {
         })
       )}
       {asking && chosen !== undefined && action !== null && a.act.confirm === action.key && (
-        <Box gap={2}>
+        <Box gap={2} flexWrap="wrap">
           <Text color="error">{stripControl(`本当に ${chosen.name} を削除しますか？`)}</Text>
           <Button key={`act-confirm:${action.key}`} plain label="削除する" onPress={() => a.act.onConfirm(action)}>
             <Text color="error">削除する</Text>

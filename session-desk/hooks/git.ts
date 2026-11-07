@@ -303,6 +303,12 @@ export async function requeryPr(run: Run, name: string, tip: string, ahead: numb
   return adoptPr(own, p => relation.get(p.number) ?? 'other')
 }
 
+// 画面の snapshot が、作り直しの元にした snapshot のままなら新しいほうに替える。
+// 取得の途中で別の更新が入っていたら、画面のほうを残す（古い結果で上書きしない）。
+export function replaceIfSame(cur: Snapshot | null, base: Snapshot, next: Snapshot): Snapshot | null {
+  return cur !== null && cur.cwd === base.cwd && cur.gitAt === base.gitAt ? next : cur
+}
+
 // 選んだブランチだけ、日時を取り、PR の一覧が上限に達していたときは PR を引き直す。
 export async function enrich(run: Run, snap: Snapshot, name: string): Promise<Snapshot> {
   const row = snap.branches.find(b => b.name === name)

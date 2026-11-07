@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyDetail, collect, detailOf, enrich, pickBudget, requeryPr } from './git'
+import { applyDetail, collect, detailOf, enrich, pickBudget, replaceIfSame, requeryPr } from './git'
 import type { Run, Snapshot } from './git'
 
 type Reply = { exitCode?: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | 'reject'
@@ -394,4 +394,13 @@ test('problems: a failing for-each-ref is a git failure, not "no commit"', async
   const refsKey = 'for-each-ref --format=%(refname)%09%(objectname)%09%(committerdate:iso-strict) refs/heads refs/remotes/origin'
   const snap = await collect(fake({ [refsKey]: { exitCode: 128, stderr: 'fatal: bad object' } }).run, null, OPTS)
   expect(snap.problem).toBe('git-failed')
+})
+
+test('replaceIfSame writes the new snapshot only when the screen still shows the one it was built from', async () => {
+  const base = await collect(fake().run, null, OPTS)
+  const next = { ...base, warnings: ['x'] }
+  expect(replaceIfSame(base, base, next)).toBe(next)
+  expect(replaceIfSame({ ...base, gitAt: '00:00:00' }, base, next)).not.toBe(next)
+  expect(replaceIfSame({ ...base, cwd: 'D:/other' }, base, next)?.cwd).toBe('D:/other')
+  expect(replaceIfSame(null, base, next)).toBe(null)
 })

@@ -49,10 +49,11 @@ function reply(argv: string[]) {
 function engine(on: any, placed = true) {
   const calls: string[] = []
   const timers = { made: 0 }
+  const cfg = { cwd: 'D:/p', ghFail: false }
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: placed }] }))
-  on('session.cwd', () => ({ value: 'D:/p' }))
+  on('session.cwd', () => ({ value: cfg.cwd }))
   // テストのエンジンは、周期を待たずに fn を呼び続ける。周期を拒否して、そこで止める（呼ばれた回数だけを数える）。
   on('clock.every', () => {
     timers.made++
@@ -63,11 +64,13 @@ function engine(on: any, placed = true) {
   on('process.run', (_: any, e: any) => {
     calls.push(e.argv.join(' '))
 
-    return { value: reply(e.argv) }
+    const r = reply(e.argv)
+
+    return { value: cfg.ghFail && e.argv[0] === 'gh' ? { ...r, exitCode: 1 } : r }
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls, timers }
+  return { calls, timers, cfg }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -164,5 +167,38 @@ test('when a refresh throws, the user is told once instead of the tab silently s
   await flush()
   await flush()
   expect(toasts.length).toBe(1)
+  await ui.unmount()
+})
+
+test('moving to another folder resets the gh backoff and reads gh again', async ($, on) => {
+  const e = engine(on)
+  e.cfg.ghFail = true
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'tab-branch' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(1)
+  e.cfg.cwd = 'D:/other'
+  e.cfg.ghFail = false
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(2)
+  await ui.unmount()
+})
+
+test('pressing the ブランチ tab again does not call gh while it is backing off, but still reads git', async ($, on) => {
+  const e = engine(on)
+  e.cfg.ghFail = true
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'tab-branch' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(1)
+  const gitBefore = git(e.calls)
+  await ui.press({ key: 'tab-history' })
+  await ui.press({ key: 'tab-branch' })
+  await settle(e.calls)
+  expect(gh(e.calls)).toBe(1)
+  expect(git(e.calls)).toBeGreaterThan(gitBefore)
   await ui.unmount()
 })
