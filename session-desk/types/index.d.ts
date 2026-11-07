@@ -1,4 +1,4 @@
-export type Tab = 'history' | 'quick' | 'branch'
+export type Tab = 'history' | 'quick' | 'git'
 
 declare module 'claude-code' {
   interface PluginState {

@@ -1,5 +1,5 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
-import { actionOf } from './branch'
+import { actionOf, tidyUrl } from './branch'
 import type { Action, BranchRow, Kind, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
@@ -48,16 +48,19 @@ function diffText(diff: BranchRow['facts']['originDiff']): string {
 }
 
 // 見出しの下に出すリモートの行。取れなかったとき・ないとき・origin だけがないときも、言葉にする。
-function remoteLines(remotes: Snapshot['remotes']): string[] {
+// name と url を持つ行は名前と URL を別の Text で描き、text だけの行は一文で描く。
+type RemoteLine = { name: string; url: string } | { text: string }
+
+function remoteLines(remotes: Snapshot['remotes']): RemoteLine[] {
   if (remotes === null) {
-    return ['リモート: 不明']
+    return [{ text: 'リモート: 不明' }]
   }
   if (remotes.length === 0) {
-    return ['リモートなし']
+    return [{ text: 'リモートなし' }]
   }
-  const lines = remotes.map(r => `${r.name}  ${r.url}`)
+  const lines: RemoteLine[] = remotes.map(r => ({ name: r.name, url: tidyUrl(r.url) }))
 
-  return remotes.some(r => r.name === 'origin') ? lines : [...lines, 'origin なし']
+  return remotes.some(r => r.name === 'origin') ? lines : [...lines, { text: 'origin なし' }]
 }
 
 // テーマの色名。明るい端末でも暗い端末でも読める。
@@ -198,9 +201,16 @@ export function renderBranchTab(ui: Ui, a: Args) {
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
         <Text bold>{`ブランチ ${snap.branches.length}`}</Text>
-        {remoteLines(snap.remotes).map(line => (
-          <Text dimColor>{stripControl(line)}</Text>
-        ))}
+        {remoteLines(snap.remotes).map(line =>
+          'text' in line ? (
+            <Text dimColor>{stripControl(line.text)}</Text>
+          ) : (
+            <Box gap={2}>
+              <Text color="suggestion">{stripControl(line.name)}</Text>
+              <Text>{stripControl(line.url)}</Text>
+            </Box>
+          ),
+        )}
       </Box>
       <Box key={wide ? 'branch-wide' : 'branch-narrow'} flexDirection={wide ? 'row' : 'column'} gap={wide ? 3 : 1}>
         {list}

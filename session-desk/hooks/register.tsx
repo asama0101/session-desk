@@ -35,7 +35,7 @@ const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
   { id: 'history', label: '履歴' },
-  { id: 'branch', label: 'ブランチ' },
+  { id: 'git', label: 'Git' },
 ]
 
 // 定型文を変えたら、atom（画面）とストア（次のセッション）の両方に書く。`$` を受け取る関数は、トップレベルに置く。
@@ -68,7 +68,7 @@ const runOf = ($: any): Run => argv => $.process.run(argv, { timeoutMs: 15000, e
 
 // ブランチタブが表示中のときだけ、git（と、withGh なら gh）を読んで snapshot を更新する。
 async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
-  if ((await read($, tab)) !== 'branch') {
+  if ((await read($, tab)) !== 'git') {
     return
   }
   const panes: { id: string; isPlaced: boolean }[] = await $.ui.panes()
@@ -172,7 +172,7 @@ async function answerAction($: any, action: Action, step: Step) {
 
 async function selectTab($: any, desk: Desk, id: Tab) {
   await update($, tab, () => id)
-  if (id === 'branch') {
+  if (id === 'git') {
     // gh が失敗して間隔が延びている間は、タブを押しても gh は読み直さない（git は読み直す）。
     desk.refresher?.request(desk.ghFailures === 0 || Date.now() >= desk.ghNextAt)
   }
@@ -203,7 +203,7 @@ export const register: Register = on => {
           () => {
             if (!desk.failed) {
               desk.failed = true
-              void $.ui.toast('ブランチタブを更新できませんでした')
+              void $.ui.toast('Git タブを更新できませんでした')
             }
           },
         ),
@@ -288,7 +288,7 @@ export const register: Register = on => {
             })}
         </Box>
       )
-    } else if (current === 'branch') {
+    } else if (current === 'git') {
       const act = await read($, branchAct)
       body = renderBranchTab(
         { Box, Text, Button },
