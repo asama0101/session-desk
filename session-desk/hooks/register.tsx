@@ -57,6 +57,7 @@ type Desk = {
   timer: { cancel(): void } | null
   ghNextAt: number
   ghFailures: number
+  failed: boolean
 }
 
 const runOf = ($: any): Run => argv => $.process.run(argv, { timeoutMs: 15000, env: { LC_ALL: 'C' } })
@@ -112,7 +113,7 @@ async function selectTab($: any, desk: Desk, id: Tab) {
 }
 
 export const register: Register = on => {
-  const desk: Desk = { refresher: null, timer: null, ghNextAt: 0, ghFailures: 0 }
+  const desk: Desk = { refresher: null, timer: null, ghNextAt: 0, ghFailures: 0, failed: false }
 
   on('tool.call', async ($, e, next) => {
     const tool = e.tool as string
@@ -127,7 +128,19 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     desk.timer?.cancel()
     desk.refresher = createRefresher({
-      run: withGh => refreshNow($, desk, withGh),
+      // 更新が例外で止まったときは、「読み込み中」のまま黙らないように、1 回だけ知らせる。
+      run: withGh =>
+        refreshNow($, desk, withGh).then(
+          () => {
+            desk.failed = false
+          },
+          () => {
+            if (!desk.failed) {
+              desk.failed = true
+              void $.ui.toast('ブランチタブを更新できませんでした')
+            }
+          },
+        ),
       now: () => Date.now(),
       delay: ms => $.clock.sleep(ms),
     })

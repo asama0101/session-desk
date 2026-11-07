@@ -137,3 +137,32 @@ test('the session start creates the 10-second timer', async ($, on) => {
   await start($)
   expect(e.timers.made).toBe(2)
 })
+
+test('when a refresh throws, the user is told once instead of the tab silently staying at 読み込み中', async ($, on) => {
+  const toasts: string[] = []
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.panes', () => ({ value: [{ id: 'session-desk', isPlaced: true }] }))
+  on('session.cwd', () => {
+    throw new Error('boom')
+  })
+  on('clock.every', () => ({ deny: 'test: no timers' }))
+  on('clock.sleep', () => ({ value: undefined }))
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('tool.call', () => ({ result: {} }))
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'tab-branch' })
+  await flush()
+  await flush()
+  expect(toasts.length).toBe(1)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await flush()
+  await flush()
+  expect(toasts.length).toBe(1)
+  await ui.unmount()
+})
