@@ -77,7 +77,13 @@ function engine(on: any, over: Over = {}) {
   const submitted: string[] = []
   const toasts: string[] = []
   const stored = new Map<string, unknown>(Object.entries(over.stored ?? {}))
-  on('store.get', (_: any, e: any) => ({ value: stored.get(e.key) }))
+  // 読み取りの順番（store.get と、最初の process.run）
+  const order: string[] = []
+  on('store.get', (_: any, e: any) => {
+    order.push(`store:${e.key}`)
+
+    return { value: stored.get(e.key) }
+  })
   on('store.set', (_: any, e: any) => {
     stored.set(e.key, e.value)
 
@@ -105,6 +111,7 @@ function engine(on: any, over: Over = {}) {
   on('process.run', (_: any, e: any) => {
     const argv: string[] = e.argv
     calls.push(argv.join(' '))
+    if (!order.includes('run')) order.push('run')
     if (over.hang) {
       return new Promise(() => {})
     }
@@ -128,7 +135,7 @@ function engine(on: any, over: Over = {}) {
   })
   on('tool.call', () => ({ result: {} }))
 
-  return { calls, submitted, toasts, stored }
+  return { calls, submitted, toasts, stored, order }
 }
 
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
@@ -807,4 +814,42 @@ test('release: the 「今はしない」 on a merged branch row saves the same k
   press(renderBranchTab(ui, args({ tag: 'v1.2.0', ahead: 3 })))
   press(renderBranchTab(ui, args(null)))
   expect(pressed).toEqual(['release:v1.2.0:3', 'release:none'])
+})
+
+test('next button: two presses at the same instant send the request once', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  await Promise.all([ui.press({ key: 'git-next' }), ui.press({ key: 'git-next' })])
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
+  await ui.unmount()
+})
+
+test('next button: a sub-agent turn ending does not allow a second press; the main turn ending does', async ($, on) => {
+  const e = engine(on)
+  on('turn.complete', (_: any, ev: any) => ({ text: ev.answer }))
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'git-next' })
+  await flush()
+  await $.turn.complete({ answer: 'a', durationMs: 5, isAborted: false, turnId: 'sub-t', reason: 'answer', agentId: 'sub-1' } as any)
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted.length).toBe(1)
+  await $.turn.complete({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' } as any)
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted.length).toBe(2)
+  await ui.unmount()
+})
+
+test('session start reads the saved answers before the first Git read', async ($, on) => {
+  const e = engine(on, { ...ON_MAIN, stored: { releaseSkip: ['release:v1.2.0:3'] } })
+  await start($)
+  const ui = await open($, e.calls)
+  const stored = e.order.indexOf('store:releaseSkip')
+  expect(stored).toBeGreaterThanOrEqual(0)
+  expect(stored).toBeLessThan(e.order.indexOf('run'))
+  await ui.unmount()
 })

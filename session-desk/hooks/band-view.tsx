@@ -72,7 +72,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const narrow = a.columns !== undefined && a.columns < NARROW_COLUMNS
   const barWidth = a.columns === undefined ? BAR_WIDTH : Math.max(BAR_WIDTH_MIN, a.columns - 2)
   // コンテキストのバーは、全角の塗りつぶし（█）で描く。行いっぱいの高さで、上下の真ん中に揃う（▄ のように下へ寄らない）。利用枠のバーは、行の半分ほどの横長の四角（▬）。細すぎず、行の半分ほどの太さ（空きは暗い色）。
-  // 利用枠のバー: 使用率の分だけ塗る。80% 以上で黄、95% 以上で赤、それ未満は緑。
+  // 利用枠のバー: 使用率の分だけ塗る。60% 未満は緑、60% 以上で黄、80% 以上で赤（usageColor と同じ）。
   const limitBar = (percent: number, width: number) => {
     const filled = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
     const level = usageColor(percent)
