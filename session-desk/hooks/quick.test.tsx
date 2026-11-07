@@ -47,7 +47,7 @@ function fakeEngine(on: any, entries?: Record<string, unknown>) {
 const start = ($: any) => $.session.start({ cwd: 'D:/p', surface: 'terminal', interactive: true })
 const send = ($: any, text: string, origin: any = { kind: 'composer' }) => $.prompt.submit({ text, origin })
 // 定型文の一覧は、ふつうの Text。ボタンの label は props にあり、children には入らない。
-const labels = async (ui: any): Promise<string[]> => textsOf(await ui.drawn())
+const labels = async (ui: any): Promise<string[]> => textsOf(await ui.drawn()).filter(text => !/^[▲▼] /.test(text))
 const open = async ($: any) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await ui.press({ key: 'tab-quick' })
@@ -118,6 +118,68 @@ test('the phrase is plain text; actions are borderless words on the next line, w
       (box.props as { flexDirection?: string } | undefined)?.flexDirection === 'column',
   )
   expect(list).toBe(true)
+  await ui.unmount()
+})
+
+test('every row has the same four actions in the same order: 送信, 削除, 上へ, 下へ; the ends keep a dim, unpressable slot', async ($, on) => {
+  fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  const tree = await ui.drawn()
+  const rows = [0, 1, 2].map(i => parentOf(tree, `quick-${i}`) as { children: { type: string; props?: { label?: string }; children?: unknown[] }[] })
+  const words = (row: (typeof rows)[number]) =>
+    row.children.map(c => (c.type === 'Button' ? c.props?.label : (c.children as string[])[0]))
+  for (const row of rows) {
+    expect(words(row)).toEqual(['▶ 送信', '× 削除', '▲ 上へ', '▼ 下へ'])
+  }
+  // 先頭の「上へ」と末尾の「下へ」は、押せない字。
+  expect(rows[0].children[2].type).toBe('Text')
+  expect(rows[1].children.map(c => c.type)).toEqual(['Button', 'Button', 'Button', 'Button'])
+  expect(rows[2].children[3].type).toBe('Text')
+  await ui.unmount()
+})
+
+const SEVEN = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7']
+
+test('quick: only the first 5 phrases show; 「もっと見る」 opens the rest and 「閉じる」 closes them', async ($, on) => {
+  fakeEngine(on, { quick: SEVEN })
+  await start($)
+  const ui = await open($)
+  expect(await labels(ui)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  expect(JSON.stringify(await ui.find({ key: 'more-quick' }))).toContain('▾ もっと見る（あと 2 件）')
+  await ui.press({ key: 'more-quick' })
+  expect(await labels(ui)).toEqual(SEVEN)
+  expect(JSON.stringify(await ui.find({ key: 'more-quick' }))).toContain('▴ 閉じる')
+  await ui.press({ key: 'more-quick' })
+  expect(await labels(ui)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5'])
+  await ui.unmount()
+})
+
+test('quick: 5 phrases or fewer have no 「もっと見る」', async ($, on) => {
+  fakeEngine(on, { quick: SEVEN.slice(0, 5) })
+  await start($)
+  const ui = await open($)
+  expect(await labels(ui)).toEqual(SEVEN.slice(0, 5))
+  expect(await ui.find({ key: 'more-quick' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('quick: a question dialog holds the keys, so a phrase is not sent and the person is told', async ($, on) => {
+  const { submitted } = fakeEngine(on)
+  const toasts: string[] = []
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('prompt.fill', () => ({ isFilled: false, refusal: 'dialog', text: '' }))
+  await start($)
+  const ui = await open($)
+  await ui.press({ key: 'quick-0' })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(submitted).toEqual([])
+  // ほかの通知（Git タブの更新の失敗など）は、この確認に関係しない。
+  expect(toasts.filter(t => t.startsWith('質問や許可'))).toEqual(['質問や許可の待ち中です。先に答えてください'])
   await ui.unmount()
 })
 

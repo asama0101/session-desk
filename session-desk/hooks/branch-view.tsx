@@ -1,6 +1,7 @@
 // 「ブランチ」タブの表示。Snapshot を文字で描くだけで、git も gh も呼ばない。
-import { actionOf, tidyUrl } from './branch'
-import type { Action, BranchRow, Kind, Stage } from './branch'
+import { nextOf, tidyUrl } from './branch'
+import { renderMore, shownCount } from './more'
+import type { BranchRow, Kind, Next, Stage } from './branch'
 import type { Problem, Snapshot } from './git'
 import { stripControl } from './lib'
 
@@ -86,14 +87,21 @@ function isNowStage(stage: Stage, row: BranchRow): boolean {
   return stage.id === row.now.id && stage.status === 'todo'
 }
 
-function stageLine(stage: Stage, row: BranchRow, offsetMin: number): string {
+// 経過の 1 行の左側: 記号、段階名、件数などの補足、「今」の文言。日時は、右端に別の Text で出す。
+function stageLine(stage: Stage, row: BranchRow): string {
   const isNow = isNowStage(stage, row)
   const symbol = stage.status === 'done' ? '✓' : isNow ? '●' : stage.status === 'unknown' ? '?' : stage.status === 'skipped' ? '－' : '○'
-  const date = stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
-  const parts = [`${symbol} ${stage.label}`, date, stage.note ?? '', isNow ? row.now.text : '']
+  const parts = [`${symbol} ${stage.label}`, stage.note ?? '', isNow ? row.now.text : '']
 
   return parts.filter(part => part !== '').join('  ')
 }
+
+function stageDate(stage: Stage, offsetMin: number): string {
+  return stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
+}
+
+// レールの記号。最初は ┌、最後は └、間は ├。
+const railGlyph = (i: number, count: number) => (i === 0 ? '┌' : i === count - 1 ? '└' : '├')
 
 type Ui = { Box: any; Text: any; Button: any }
 type Args = {
@@ -102,14 +110,12 @@ type Args = {
   columns: number
   offsetMin: number
   onSelect(name: string): void
-  // yes/no。dismissed は「いいえ」や「はい」を押した質問の key、confirm は 2 段目の確認中の key。
-  act: {
-    dismissed: readonly string[]
-    confirm: string | null
-    onYes(action: Action): void
-    onNo(action: Action): void
-    onConfirm(action: Action): void
-  }
+  // 一覧の「もっと見る」。閉じているときは、先頭から数件と、いまのブランチ・選んだブランチだけを出す。
+  more: { open: boolean; onToggle(): void }
+  // 「次へ進む」ボタンを押したとき。
+  onNext(next: Next): void
+  // Claude が動いている間は真。ボタンは押せない（質問や許可の待ちと、依頼が衝突しないように）。
+  busy: boolean
 }
 
 export function renderBranchTab(ui: Ui, a: Args) {
@@ -133,9 +139,13 @@ export function renderBranchTab(ui: Ui, a: Args) {
   const chosen = snap.branches.find(b => b.name === a.selected) ?? current ?? snap.branches[0]
   const wide = a.columns >= WIDE_COLUMNS
 
+  // 閉じているとき: 先頭から LIST_LIMIT 件。範囲の外でも、いまのブランチと選んだブランチは出す（経過の見出しが、一覧から消えないように）。
+  const limit = shownCount(snap.branches.length, a.more.open)
+  const visible = snap.branches.filter((row, i) => i < limit || row === current || row === chosen)
+
   const list = (
     <Box flexDirection="column">
-      {snap.branches.map(row => {
+      {visible.map(row => {
         const diff = diffText(row.facts.originDiff)
         const label = stripControl(`${row.isCurrent ? '＊' : '　'}${KIND_LABEL[row.kind]} ${row.name}  ${diff}${row.now.text}`)
         const key = `branch-${row.name}`
@@ -148,12 +158,13 @@ export function renderBranchTab(ui: Ui, a: Args) {
           </Button>
         )
       })}
+      {renderMore({ Text, Button }, { tab: 'git', total: snap.branches.length, shown: visible.length, open: a.more.open, onToggle: () => a.more.onToggle() })}
     </Box>
   )
 
+  // 「今」の段階の行に出す、次へ進むボタン（いまのブランチだけ）。
   const defaultName = snap.branches.find(b => b.kind === 'default')?.name ?? null
-  const action = chosen === undefined ? null : actionOf(chosen, defaultName)
-  const asking = action !== null && chosen !== undefined && !a.act.dismissed.includes(action.key)
+  const next = chosen === undefined ? null : nextOf(chosen, defaultName)
 
   const detail = (
     <Box flexDirection="column">
@@ -162,36 +173,33 @@ export function renderBranchTab(ui: Ui, a: Args) {
       ) : chosen.kind === 'default' ? (
         <Text dimColor>経過はありません（既定ブランチ）</Text>
       ) : (
-        chosen.stages.map(stage => {
-          const isNow = isNowStage(stage, chosen)
+        <Box flexDirection="column">
+          <Text bold>{stripControl(chosen.name)}</Text>
+          {chosen.stages.map((stage, i) => {
+            const isNow = isNowStage(stage, chosen)
+            const date = stageDate(stage, a.offsetMin)
 
-          return (
-            <Text color={isNow ? 'warning' : STATUS_COLOR[stage.status]} bold={isNow}>
-              {stripControl(stageLine(stage, chosen, a.offsetMin))}
-            </Text>
-          )
-        })
-      )}
-      {asking && chosen !== undefined && action !== null && a.act.confirm === action.key && (
-        <Box gap={2} flexWrap="wrap">
-          <Text color="error">{stripControl(`本当に ${chosen.name} を削除しますか？`)}</Text>
-          <Button key={`act-confirm:${action.key}`} plain label="削除する" onPress={() => a.act.onConfirm(action)}>
-            <Text color="error">削除する</Text>
-          </Button>
-          <Button key={`act-cancel:${action.key}`} plain label="やめる" onPress={() => a.act.onNo(action)}>
-            <Text>やめる</Text>
-          </Button>
-        </Box>
-      )}
-      {asking && action !== null && a.act.confirm !== action.key && (
-        <Box gap={2}>
-          <Text color="warning">{action.question}</Text>
-          <Button key={`act-yes:${action.key}`} plain label="はい" onPress={() => a.act.onYes(action)}>
-            <Text color="success">はい</Text>
-          </Button>
-          <Button key={`act-no:${action.key}`} plain label="いいえ" onPress={() => a.act.onNo(action)}>
-            <Text color="error">いいえ</Text>
-          </Button>
+            return (
+              <Box justifyContent="space-between" gap={2}>
+                <Box gap={1}>
+                  <Text color={isNow ? 'warning' : stage.status === 'done' ? 'success' : 'inactive'}>{railGlyph(i, chosen.stages.length)}</Text>
+                  <Text color={isNow ? 'warning' : STATUS_COLOR[stage.status]} bold={isNow}>
+                    {stripControl(stageLine(stage, chosen))}
+                  </Text>
+                </Box>
+                {date !== '' && <Text dimColor>{date}</Text>}
+                {isNow && next !== null && (a.busy ? (
+                  <Text dimColor>{next.label}</Text>
+                ) : (
+                  <Button key="git-next" plain label={next.label} onPress={() => a.onNext(next)}>
+                    <Text bold color="suggestion">
+                      {next.label}
+                    </Text>
+                  </Button>
+                ))}
+              </Box>
+            )
+          })}
         </Box>
       )}
     </Box>

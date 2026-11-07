@@ -311,7 +311,7 @@ test('five_hour and seven_day show two limits', async ($, on) => {
   expect(t).toContain('3h 0m')
   const c = colorsOf(await ui.drawn())
   expect(c.find(x => x.text === '97%')?.color).toBe('error')
-  expect(c.find(x => x.text === '36%')?.color).toBeUndefined()
+  expect(c.find(x => x.text === '36%')?.color).toBe('success')
   await ui.unmount()
 })
 
@@ -342,11 +342,12 @@ test('the context bar is split by the breakdown categories colours', async ($, o
   await $.turn.complete(done())
   await settle()
   const colors = colorsOf(await ui.drawn())
-    .filter(x => /^█+$/.test(x.text))
+    .filter(x => /^▬+$/.test(x.text))
     .map(x => x.color)
   expect(colors).toContain('#61afef')
   expect(colors).toContain('#7ec699')
-  expect(colors).not.toContain('#55555a')
+  // 空きの区間は、暗い色（#55555a）の同じ文字。
+  expect(colors).toContain('#55555a')
   await ui.unmount()
 })
 
@@ -529,7 +530,7 @@ test('rows are sorted by tokens, buffer and unknown names fold into その他, �
   await settle()
   await settle()
   const t = await draw(ui)
-  const names = ['メッセージ', 'MCP ツール', 'その他', 'システムプロンプト', '空き']
+  const names = ['メッセージ', 'MCP', 'その他', 'システム', '空き']
   const at = names.map(n => t.indexOf(n))
   expect(at.every(i => i >= 0)).toBe(true)
   expect([...at].sort((a, b) => a - b)).toEqual(at)

@@ -18,7 +18,7 @@ declare module 'claude-code' {
         goal: string | null
         reason: string
         steps: string[]
-        confirming: number | null
+        recommended: number | null
         turnId: string | null
       }
       usageView: {
@@ -43,8 +43,8 @@ declare module 'claude-code' {
         startedAt: Record<string, number>
       }
       bandUi: { exact: boolean; detail: string[] }
+      more: { quick: boolean; history: boolean; git: boolean }
       branchSel: string | null
-      branchAct: { dismissed: string[]; confirm: string | null }
     }
   }
 }

@@ -126,15 +126,30 @@ test('the prompt is plain text; actions are borderless words on the next line, w
   await ui.unmount()
 })
 
+test('history: the newest 5 show; 「もっと見る」 opens the older ones', async ($, on) => {
+  fakeEngine(on)
+  for (let i = 1; i <= 7; i++) await send($, `h${i}`)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await ui.press({ key: 'tab-history' })
+  expect(await rows(ui)).toEqual(['7. h7', '6. h6', '5. h5', '4. h4', '3. h3'])
+  expect(JSON.stringify(await ui.find({ key: 'more-history' }))).toContain('あと 2 件')
+  await ui.press({ key: 'more-history' })
+  expect(await rows(ui)).toEqual(['7. h7', '6. h6', '5. h5', '4. h4', '3. h3', '2. h2', '1. h1'])
+  await ui.press({ key: 'more-history' })
+  expect(await rows(ui)).toHaveLength(5)
+  await ui.unmount()
+})
+
 test('the panel opens on 定型文; the selected tab is marked with ▸ and drawn normally, the other is dim', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   const tab = async (key: string) => JSON.stringify(await ui.find({ key }))
   expect(await tab('tab-quick')).toContain('"label":"▸ 定型文"')
   expect(await tab('tab-quick')).not.toContain('"dimColor":true')
-  // 選択中のタブは、▸ がアクセント色で、名前が太字。
-  expect(await tab('tab-quick')).toContain('"color":"suggestion"')
+  // 選択中のタブは、水色の太字に下線。選んでいないタブは、薄い字。
+  expect(await tab('tab-quick')).toContain('"color":"#4fd6e0"')
   expect(await tab('tab-quick')).toContain('"bold":true')
+  expect(await tab('tab-quick')).toContain('"underline":true')
   expect(await tab('tab-history')).toContain('"label":"履歴"')
   expect(await tab('tab-history')).toContain('"dimColor":true')
   expect(await ui.find({ key: 'tab-changes' })).toBeUndefined()
@@ -158,11 +173,16 @@ test('the tabs are in the order 定型文, 履歴', async ($, on) => {
 test('one blank row separates the tabs from the body, on both tabs', async ($, on) => {
   fakeEngine(on)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  const root = async () => (await ui.drawn()) as { props?: { flexDirection?: string; gap?: number } }
-  // 定型文タブ（初期表示）と、履歴タブの両方で、全体は縦並びで、タブと本文の間に 1 行（gap 1）がある。
-  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  // タブの行と本文は同じ縦並びの Box にあり、本文は 1 行（marginTop 1）あけて置かれる。
+  const gap = async () => {
+    const tabs = ancestorsOf(await ui.drawn(), 'tab-quick').at(-1) as { props?: { flexDirection?: string }; children?: { props?: { marginTop?: number } }[] }
+    const column = ancestorsOf(await ui.drawn(), 'tab-quick').at(-2) as { props?: { flexDirection?: string }; children?: { props?: { marginTop?: number } }[] }
+    expect(tabs).toBeDefined()
+    return column.props?.flexDirection === 'column' && column.children?.some(c => c.props?.marginTop === 1)
+  }
+  expect(await gap()).toBe(true)
   await ui.press({ key: 'tab-history' })
-  expect((await root()).props).toMatchObject({ flexDirection: 'column', gap: 1 })
+  expect(await gap()).toBe(true)
   await ui.unmount()
 })
 

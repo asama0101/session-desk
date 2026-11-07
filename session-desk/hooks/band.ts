@@ -50,6 +50,25 @@ export function usageColor(percent: number): 'normal' | 'warning' | 'error' {
   return 'normal'
 }
 
+// 押せない操作の薄い字。
+export const OFF_COLOR = '#555a65'
+
+// 帯の配色。ステータスラインの配色（モデルの系統ごとに色を分け、ブランチは水色）に合わせた、暗い背景で読める明るさの色。
+export const BRANCH_COLOR = '#4fd6e0'
+const MODEL_COLORS: [string, string][] = [
+  ['opus', '#d78bff'],
+  ['sonnet', '#4fd6e0'],
+  ['haiku', '#7db4ff'],
+  ['fable', '#7ff0f0'],
+]
+
+// モデル名に含まれる系統名（小文字で判定）で色を分ける。どれにも当たらないときは水色。
+export function modelColor(name: string): string {
+  const lower = name.toLowerCase()
+
+  return MODEL_COLORS.find(([key]) => lower.includes(key))?.[1] ?? BRANCH_COLOR
+}
+
 export function formatDuration(ms: number): string {
   const total = Math.floor(ms / 1000)
   const h = Math.floor(total / 3600)
@@ -146,8 +165,8 @@ function fit(value: unknown, max: number): string | null {
   return text !== '' && text.length <= max ? text : null
 }
 
-export function parseForkReply(text: string, prevGoal: string | null): { goal: string | null; reason: string; steps: string[] } {
-  const broken = { goal: prevGoal, reason: WAITING, steps: [] as string[] }
+export function parseForkReply(text: string, prevGoal: string | null): { goal: string | null; reason: string; steps: string[]; recommended: number | null } {
+  const broken = { goal: prevGoal, reason: WAITING, steps: [] as string[], recommended: null }
   const from = text.indexOf('{')
   const to = text.lastIndexOf('}')
   if (from < 0 || to < from) return broken
@@ -160,28 +179,32 @@ export function parseForkReply(text: string, prevGoal: string | null): { goal: s
   if (typeof json !== 'object' || json === null) return broken
   const obj = json as Record<string, unknown>
   if (typeof obj.goal !== 'string') return broken
-  const steps = (Array.isArray(obj.steps) ? obj.steps : [])
-    .map(s => fit(s, STEP_MAX))
-    .filter((s): s is string => s !== null)
+  // 捨てた案があっても、recommended は元の並びの番号で来るので、残した案の番号に直す。
+  const kept = (Array.isArray(obj.steps) ? obj.steps : [])
+    .map((s, at) => ({ text: fit(s, STEP_MAX), at }))
+    .filter((s): s is { text: string; at: number } => s.text !== null)
     .slice(0, STEPS_MAX)
-  return { goal: fit(obj.goal, GOAL_MAX) ?? prevGoal, reason: fit(obj.reason, REASON_MAX) ?? WAITING, steps }
+  const rec = kept.findIndex(s => s.at === obj.recommended)
+
+  return {
+    goal: fit(obj.goal, GOAL_MAX) ?? prevGoal,
+    reason: fit(obj.reason, REASON_MAX) ?? WAITING,
+    steps: kept.map(s => s.text),
+    recommended: rec >= 0 ? rec : null,
+  }
 }
 
 // fork への指示。fork は会話ごと引き継ぐので、直前の返答は渡さない。
 export function forkPrompt(prevGoal: string | null): string {
   return [
     '直前の返答について、JSON だけを返してください。説明や前置きは書かないでください。',
-    '形式: {"goal": "<1行、40字以内>", "reason": "<止まった理由、30字以内>", "steps": [...]}',
+    '形式: {"goal": "<1行、40字以内>", "reason": "<止まった理由、30字以内>", "steps": [...], "recommended": <番号または null>}',
     `前回のゴール: ${prevGoal ?? 'なし'}`,
     'goal は、会話の目的が大きく変わったときだけ書き換え、そうでなければ前回のゴールをそのまま返す（前回のゴールがなければ新しく書く）。',
     'steps は、返答が人の判断を求めているとき（質問、案の選択、確認待ち、エラーの対処）だけ、次に頼みそうな行動を最大 4 個、1 つ 40 字以内の具体的な命令文で返す。判断が要らなければ空配列を返す。',
+    'recommended は、steps のうち、あなたが勧める 1 つの番号（0 始まり）。案を比べて勧められるときだけ書き、勧める案がなければ null にする。',
     '返答にない新しい作業を足さない。',
   ].join('\n')
-}
-
-// 取り返しのつかない操作を思わせる語。全角は半角に直してから見る。
-export function isRiskyStep(text: string): boolean {
-  return /削除|消去|delete|overwrite|push|force|reset|\brm\b|\bdrop\b|--no-verify/i.test(text.normalize('NFKC'))
 }
 
 // ---- 実行状態 ----

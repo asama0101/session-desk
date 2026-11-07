@@ -315,17 +315,17 @@ export function parseRemotes(stdout: string): Remote[] {
   return found
 }
 
-export type Action = {
-  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。「いいえ」を覚えておく目印。
+// 「次へ進む」ボタン。いまチェックアウトしているブランチの「今」が commit・push・PR・削除のとき、その段階の行に出す。
+// 押すと、prompt を Claude に送る（確認は挟まない）。マージとレビューは人の番なので、ボタンはない。
+export type Next = {
+  // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。二度押しを止める目印。
   key: string
-  kind: 'commit' | 'push' | 'pr' | 'delete'
-  question: string
-  // 「はい」を押したとき、Claude に送る依頼。
+  // ボタンの文字（例: ▶ push する）
+  label: string
   prompt: string
 }
 
-// いまチェックアウトしているブランチの「今」が、commit・push・PR・削除のどれかなら、yes/no で聞く内容を返す。
-export function actionOf(row: BranchRow, base: string | null = null): Action | null {
+export function nextOf(row: BranchRow, base: string | null = null): Next | null {
   if (!row.isCurrent || row.kind === 'default') {
     return null
   }
@@ -334,63 +334,19 @@ export function actionOf(row: BranchRow, base: string | null = null): Action | n
     case 3:
       // マージ済みのブランチに commit は促さない。
       return row.facts.dirty === true && row.facts.pr?.state !== 'MERGED'
-        ? { key, kind: 'commit', question: 'commit しますか？', prompt: `はい。ブランチ「${row.name}」の未コミットの変更を commit してください` }
+        ? { key, label: '▶ commit する', prompt: `ブランチ「${row.name}」の未コミットの変更を commit してください` }
         : null
     case 4:
-      // origin のほうが進んでいるときは、push を聞かない（先に取り込みが要る）。
-      return (row.facts.originDiff?.behind ?? 0) > 0
-        ? null
-        : { key, kind: 'push', question: 'push しますか？', prompt: `はい。ブランチ「${row.name}」を push してください` }
+      // origin のほうが進んでいるときは、push を促さない（先に取り込みが要る）。
+      return (row.facts.originDiff?.behind ?? 0) > 0 ? null : { key, label: '▶ push する', prompt: `ブランチ「${row.name}」を push してください` }
     case 5:
-      // push の状態が不明なときは、PR を聞かない。
-      if (row.facts.pushed === null) {
-        return null
-      }
-
-      return { key, kind: 'pr', question: 'PR を作りますか？', prompt: `はい。ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
+      // push の状態が不明なときは、PR を促さない。
+      return row.facts.pushed === null
+        ? null
+        : { key, label: '▶ PR を作る', prompt: `ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
     case 8:
-      return {
-        key,
-        kind: 'delete',
-        question: '削除しますか？',
-        prompt: `はい。マージ済みの作業ブランチ「${row.name}」を削除してください`,
-      }
+      return { key, label: '▶ ブランチを削除', prompt: `マージ済みの作業ブランチ「${row.name}」を削除してください` }
     default:
       return null
   }
-}
-
-// 質問への答え方。画面の押下は古いことがあり、二度押しもあるので、送る前に、いまの状態と照らす。
-//   yes: 「はい」。削除なら、まだ送らず 2 段目の確認へ（confirm）。
-//   confirm: 削除の 2 段目の「削除する」。1 段目を済ませた同じ質問のときだけ送る。
-//   no: 「いいえ」「やめる」。
-export type Step = 'yes' | 'no' | 'confirm'
-
-export function decideAnswer(
-  step: Step,
-  action: Action,
-  dismissed: readonly string[],
-  confirm: string | null,
-  current: BranchRow | undefined,
-): 'ignore' | 'dismiss' | 'confirm' | 'send' {
-  if (dismissed.includes(action.key)) {
-    return 'ignore'
-  }
-  if (step === 'no') {
-    return 'dismiss'
-  }
-  // 押した質問が、いまのブランチの質問と同じときだけ進む（段階が進んだ・別のブランチになったときは何もしない）。
-  if (current === undefined || actionOf(current)?.key !== action.key) {
-    return 'ignore'
-  }
-  if (step === 'yes') {
-    return action.kind === 'delete' ? 'confirm' : 'send'
-  }
-
-  return action.kind === 'delete' && confirm === action.key ? 'send' : 'ignore'
-}
-
-// 答え済みの確認の key を覚える。同じ key は 1 つにし、新しい順に max 件だけ残す。
-export function remember(list: readonly string[], key: string, max: number): string[] {
-  return [...list.filter(k => k !== key), key].slice(-max)
 }

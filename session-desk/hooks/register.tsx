@@ -2,13 +2,13 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
-import { addTool, classifyCategory, compactIn, forkPrompt, isRiskyStep, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, BRANCH_COLOR, classifyCategory, compactIn, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow, CategoryId } from './band'
 import { renderBand } from './band-view'
 import type { BandArgs } from './band-view'
-import { actionOf, decideAnswer, remember } from './branch'
-import type { Action, Step } from './branch'
 import { renderBranchTab } from './branch-view'
+import { renderMore, shownCount } from './more'
+import type { Next } from './branch'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
 import {
@@ -31,6 +31,8 @@ const history = atom({ plugin: 'session-desk', key: 'history' } as const, [], SH
 const quick = atom({ plugin: 'session-desk', key: 'quick' } as const, [...DEFAULT_QUICK], SHAPE)
 const tab = atom({ plugin: 'session-desk', key: 'tab' } as const, 'quick' as Tab)
 const selected = atom({ plugin: 'session-desk', key: 'selected' } as const, null as number | null)
+// 一覧の「もっと見る」を開いているか。タブごと。
+const more = atom({ plugin: 'session-desk', key: 'more' } as const, { quick: false, history: false, git: false })
 const snapshot = atom({ plugin: 'session-desk', key: 'snapshot' } as const, null as Snapshot | null)
 const bandGit = atom({ plugin: 'session-desk', key: 'bandGit' } as const, null as { branch: string | null; dirtyCount: number | null } | null)
 const band = atom(
@@ -43,7 +45,7 @@ const band = atom(
     goal: null as string | null,
     reason: '',
     steps: [] as string[],
-    confirming: null as number | null,
+    recommended: null as number | null,
     turnId: null as string | null,
   },
 )
@@ -83,8 +85,6 @@ let toolSeq = 0
 const forkGuard = { seq: 0, id: null as number | null, userSent: false }
 const FORK_TIMEOUT_MS = 30_000
 const branchSel = atom({ plugin: 'session-desk', key: 'branchSel' } as const, null as string | null)
-// yes/no の状態。dismissed: 答え済みの質問の key、confirm: 削除の 2 段目の確認中の key。
-const branchAct = atom({ plugin: 'session-desk', key: 'branchAct' } as const, { dismissed: [] as string[], confirm: null as string | null })
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: 'quick', label: '定型文' },
@@ -147,7 +147,6 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     desk.ghFailures = 0
     desk.ghNextAt = 0
     await update($, snapshot, () => null)
-    await update($, branchAct, () => ({ dismissed: [], confirm: null }))
   }
   const readGh = withGh || moved
   const collected = await collect(runOf($), moved ? null : prev, {
@@ -173,11 +172,6 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   const current = collected.branches.find(b => b.isCurrent)
   const target = gone || chosen === null ? current?.name : chosen
   const next = target === undefined ? collected : await enrich(runOf($), collected, target)
-  // 削除の 2 段目の確認は、同じ質問のあいだだけ有効にする（状態が進んだら、1 段目に戻す）。
-  // 質問は、PR を引き直したあとの現在ブランチ（next）から作る。
-  const nowCurrent = next.branches.find(b => b.isCurrent)
-  const askedKey = nowCurrent === undefined ? null : (actionOf(nowCurrent)?.key ?? null)
-  await update($, branchAct, state => (state.confirm === null || state.confirm === askedKey ? state : { ...state, confirm: null }))
   await update($, snapshot, () => next)
   await refreshBand($, cwd)
 }
@@ -345,10 +339,10 @@ function partsOf(breakdown: { categories: { name: string; kind: string; tokens: 
 
 const CATEGORY_NAMES: Record<CategoryId, string> = {
   messages: 'メッセージ',
-  mcp: 'MCP ツール',
-  systemTools: 'システムツール',
-  systemPrompt: 'システムプロンプト',
-  memory: 'メモリファイル',
+  mcp: 'MCP',
+  systemTools: 'ツール',
+  systemPrompt: 'システム',
+  memory: 'メモリ',
   skills: 'スキル',
   other: 'その他',
   free: '空き',
@@ -391,12 +385,7 @@ function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandA
 }
 
 async function selectBranch($: any, desk: Desk, name: string) {
-  const before = await read($, branchSel)
   await update($, branchSel, () => name)
-  // ほかのブランチへ移ったら、削除の 2 段目の確認は 1 段目に戻す（同じブランチを押し直したときは戻さない）。
-  if (before !== name) {
-    await update($, branchAct, state => ({ ...state, confirm: null }))
-  }
   const snap = (await read($, snapshot)) as Snapshot | null
   if (snap !== null) {
     const next = await enrich(runOf($), snap, name)
@@ -415,31 +404,6 @@ async function selectBranch($: any, desk: Desk, name: string) {
     if (!replaced) {
       desk.refresher?.request(false)
     }
-  }
-}
-
-// 「はい」「いいえ」を答える。「はい」は Claude に依頼を送る（削除だけ、確認を 2 段にする）。
-// 押下が古い・二度押しのときは、decideAnswer が何もしないと決める。
-async function answerAction($: any, action: Action, step: Step) {
-  const now = await read($, branchAct)
-  const snap = (await read($, snapshot)) as Snapshot | null
-  const decision = decideAnswer(step, action, now.dismissed, now.confirm, snap?.branches.find(b => b.isCurrent))
-  if (decision === 'ignore') {
-    return
-  }
-  if (decision === 'confirm') {
-    await update($, branchAct, state => ({ ...state, confirm: action.key }))
-
-    return
-  }
-  await update($, branchAct, state => ({ dismissed: remember(state.dismissed, action.key, 20), confirm: null }))
-  if (decision === 'send') {
-    // 送れなかったときは、確認が消えただけで終わらないように、知らせる。
-    $.prompt.submit({ text: action.prompt }).catch(() => {
-      void $.ui.toast('依頼を送れませんでした')
-      // 押し直せるように、答え済みの記録を外す。
-      void update($, branchAct, state => ({ ...state, dismissed: state.dismissed.filter(k => k !== action.key) }))
-    })
   }
 }
 
@@ -469,7 +433,7 @@ async function askFork($: any, turnId: string): Promise<void> {
       return
     }
     const got = parseForkReply(String(result.text ?? ''), prevGoal)
-    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, confirming: null } : b))
+    await update($, band, b => (b.turnId === turnId ? { ...b, goal: got.goal, reason: got.reason, steps: got.steps, recommended: got.recommended } : b))
   } catch {
     // 選択肢が出ないだけ。
   } finally {
@@ -479,25 +443,26 @@ async function askFork($: any, turnId: string): Promise<void> {
   }
 }
 
-// 選択肢を押す。危険な語を含むものは、1 回目は確認を出す（confirmed で送る）。
+// 選択肢を押すと、その文をそのまま送る。
 // 二度押しで 2 回送らないように、送る前に、書く時点の atom から選択肢を消す。
-async function pickStep($: any, i: number, confirmed: boolean) {
-  let sent: { text: string; steps: string[]; turnId: string | null } | null = null
+async function pickStep($: any, i: number) {
+  // ダイアログが開いているあいだは、選択肢を消さずに、何も送らない。
+  if (await blockedByDialog($)) {
+    return
+  }
+  let sent: { text: string; steps: string[]; recommended: number | null; turnId: string | null } | null = null
   await update($, band, b => {
     // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
     sent = null
     const text = b.steps[i]
-    if (text === undefined || (confirmed && b.confirming !== i)) {
+    if (text === undefined) {
       return b
     }
-    if (!confirmed && isRiskyStep(text)) {
-      return { ...b, confirming: i }
-    }
-    sent = { text, steps: b.steps, turnId: b.turnId }
+    sent = { text, steps: b.steps, recommended: b.recommended, turnId: b.turnId }
 
-    return { ...b, steps: [], confirming: null }
+    return { ...b, steps: [], recommended: null }
   })
-  const s = sent as { text: string; steps: string[]; turnId: string | null } | null
+  const s = sent as { text: string; steps: string[]; recommended: number | null; turnId: string | null } | null
   if (s === null) {
     return
   }
@@ -513,7 +478,65 @@ async function pickStep($: any, i: number, confirmed: boolean) {
       takeStepSent(s.text)
       void $.ui.toast('依頼を送れませんでした')
       // 押し直せるように、同じターンのあいだなら選択肢を戻す。
-      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps } : b)).catch(() => {})
+      void update($, band, b => (b.turnId === s.turnId && b.steps.length === 0 ? { ...b, steps: s.steps, recommended: s.recommended } : b)).catch(() => {})
+    },
+  )
+}
+
+// 質問や許可の待ち（ダイアログ）が開いているか。空の文を下書きの後ろに足す呼び出しで調べる（下書きは変わらない）。
+// ダイアログが入力を持っているあいだ、エンジンは refusal: 'dialog' で断る。ほかのプラグインのフックが断ったときは、理由が付かない。
+// 理由が分からない断りは、入力欄を守る側（開いている）に倒す。入力欄がない（no_composer）とき、調べられないとき（呼び出しが失敗）は、開いていないとみなす。
+async function dialogOpen($: any): Promise<boolean> {
+  try {
+    const result = await $.prompt.fill({ text: '', mode: 'append' })
+
+    return result.isFilled === false && result.refusal !== 'no_composer'
+  } catch {
+    return false
+  }
+}
+
+// ダイアログが開いているなら、依頼を送らずに知らせる（質問の答えと、ボタンの依頼が衝突するため）。送ってよければ偽。
+async function blockedByDialog($: any): Promise<boolean> {
+  if (await dialogOpen($)) {
+    void Promise.resolve()
+      .then(() => $.ui.toast('質問や許可の待ち中です。先に答えてください'))
+      .catch(() => {})
+
+    return true
+  }
+
+  return false
+}
+
+// 定型文を送る。
+async function sendQuick($: any, text: string) {
+  if (await blockedByDialog($)) {
+    return
+  }
+  void $.prompt.submit({ text })
+}
+
+// Git タブの「次へ進む」を押す。同じ状態（key が同じ）での二度押しは、送らない。Claude が止まったら、また押せる。
+let nextSentKey: string | null = null
+
+async function pressNext($: any, next: Next) {
+  // Claude が動いている間は送らない。質問や許可の待ちに依頼が割り込んで、答えが衝突するため。画面の押下が古いこともあるので、ここでも見る。
+  if ((await read($, band)).state === 'running' || nextSentKey === next.key || (await blockedByDialog($))) {
+    return
+  }
+  nextSentKey = next.key
+  stepSent.push(next.prompt)
+  $.prompt.submit({ text: next.prompt }).then(
+    () => {
+      if (takeStepSent(next.prompt)) {
+        void update($, history, list => [...list, next.prompt]).catch(() => {})
+      }
+    },
+    () => {
+      takeStepSent(next.prompt)
+      nextSentKey = null
+      void $.ui.toast('依頼を送れませんでした')
     },
   )
 }
@@ -577,7 +600,7 @@ export const register: Register = on => {
       forkGuard.id = null
     }
     if (e.agentId === undefined) {
-      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], confirming: null, turnId: e.turnId }))
+      await update($, band, b => ({ ...b, state: 'running', run: startTurn(Date.now()), stop: null, steps: [], recommended: null, turnId: e.turnId }))
       // 正確に数えた内訳は、新しいターンでは古くなるので、概算に戻す。
       await update($, usageView, v => (v.exactHeld ? { ...v, exactHeld: false } : v)).catch(() => {})
     }
@@ -602,6 +625,8 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    // 依頼のターンが終わったら、同じ状態でも「次へ進む」をもう一度押せる。
+    nextSentKey = null
     if (forkGuard.id !== null) {
       return next(e)
     }
@@ -687,7 +712,7 @@ export const register: Register = on => {
     }
     if (byUser) {
       try {
-        await update($, band, b => ({ ...b, steps: [], confirming: null }))
+        await update($, band, b => ({ ...b, steps: [], recommended: null }))
       } catch {
         // 選択肢が残るだけ。
       }
@@ -703,6 +728,8 @@ export const register: Register = on => {
     const u = await read($, usageView)
     const ag = await read($, agentsView)
 
+    const opened = await read($, more)
+    const toggleMore = (id: Tab) => void update($, more, v => ({ ...v, [id]: !v[id] })).catch(() => {})
     let body
     if (current === 'history') {
       const sent = await read($, history)
@@ -714,6 +741,7 @@ export const register: Register = on => {
           {sent
             .map((text, i) => ({ text, n: i + 1 }))
             .reverse()
+            .slice(0, shownCount(sent.length, opened.history))
             .map(({ text, n }) => {
               // 開いているかの判定は 1 回にして、label と見た目で食い違わないようにする。
               const isOpen = chosen === n
@@ -744,10 +772,10 @@ export const register: Register = on => {
                 </Box>
               )
             })}
+          {renderMore({ Text, Button }, { tab: 'history', total: sent.length, open: opened.history, onToggle: () => toggleMore('history') })}
         </Box>
       )
     } else if (current === 'git') {
-      const act = await read($, branchAct)
       body = renderBranchTab(
         { Box, Text, Button },
         {
@@ -756,13 +784,9 @@ export const register: Register = on => {
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, desk, name),
-          act: {
-            dismissed: act.dismissed,
-            confirm: act.confirm,
-            onYes: action => void answerAction($, action, 'yes'),
-            onNo: action => void answerAction($, action, 'no'),
-            onConfirm: action => void answerAction($, action, 'confirm'),
-          },
+          more: { open: opened.git, onToggle: () => toggleMore('git') },
+          onNext: next => void pressNext($, next),
+          busy: b.state === 'running',
         },
       )
     } else {
@@ -782,7 +806,7 @@ export const register: Register = on => {
             }}
           />
           {phrases.length === 0 && <Text dimColor>なし</Text>}
-          {phrases.map((text, i) => (
+          {phrases.slice(0, shownCount(phrases.length, opened.quick)).map((text, i) => (
             <Box flexDirection="column">
               <Text>{stripControl(text)}</Text>
               <Box gap={2}>
@@ -791,31 +815,11 @@ export const register: Register = on => {
                   plain
                   label="▶ 送信"
                   onPress={() => {
-                    void $.prompt.submit({ text })
+                    void sendQuick($, text)
                   }}
                 >
                   <Text color="suggestion">▶ 送信</Text>
                 </Button>
-                {i > 0 && (
-                  <Button
-                    key={`quick-up-${i}`}
-                    plain
-                    label="▲ 上へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
-                  >
-                    <Text dimColor>▲ 上へ</Text>
-                  </Button>
-                )}
-                {i < phrases.length - 1 && (
-                  <Button
-                    key={`quick-down-${i}`}
-                    plain
-                    label="▼ 下へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
-                  >
-                    <Text dimColor>▼ 下へ</Text>
-                  </Button>
-                )}
                 <Button
                   key={`quick-del-${i}`}
                   plain
@@ -824,15 +828,41 @@ export const register: Register = on => {
                 >
                   <Text color="error">× 削除</Text>
                 </Button>
+                {/* 順は 送信・削除・上へ・下へ。先頭の「上へ」と末尾の「下へ」は、押せない薄い字で位置を保つ。 */}
+                {i > 0 ? (
+                  <Button
+                    key={`quick-up-${i}`}
+                    plain
+                    label="▲ 上へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
+                  >
+                    <Text dimColor>▲ 上へ</Text>
+                  </Button>
+                ) : (
+                  <Text color={OFF_COLOR}>▲ 上へ</Text>
+                )}
+                {i < phrases.length - 1 ? (
+                  <Button
+                    key={`quick-down-${i}`}
+                    plain
+                    label="▼ 下へ"
+                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
+                  >
+                    <Text dimColor>▼ 下へ</Text>
+                  </Button>
+                ) : (
+                  <Text color={OFF_COLOR}>▼ 下へ</Text>
+                )}
               </Box>
             </Box>
           ))}
+          {renderMore({ Text, Button }, { tab: 'quick', total: phrases.length, open: opened.quick, onToggle: () => toggleMore('quick') })}
         </Box>
       )
     }
 
     return (
-      <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column">
         {renderBand({ Box, Text, Button }, {
           goal: b.goal,
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
@@ -845,22 +875,24 @@ export const register: Register = on => {
           limits: limitRows(u.rateLimits, Date.now()),
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。
-          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, confirming: b.confirming },
-          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i, false).catch(() => {}), confirm: i => void pickStep($, i, true).catch(() => {}), cancel: () => void update($, band, v => ({ ...v, confirming: null })).catch(() => {}) },
+          steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, recommended: b.recommended },
+          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
+          between: <Box flexDirection="column">
+              <Box gap={3}>
+                {TABS.map(item =>
+                  current === item.id ? (
+                    <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
+                      <Text bold underline color={BRANCH_COLOR}>{item.label}</Text>
+                    </Button>
+                  ) : (
+                    <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
+                  ),
+                )}
+              </Box>
+              <Box marginTop={1}>{body}</Box>
+            </Box>,
           columns: e.props.bodyColumns,
         })}
-        <Box gap={2}>
-          {TABS.map(item =>
-            current === item.id ? (
-              <Button key={`tab-${item.id}`} plain label={`▸ ${item.label}`} onPress={() => selectTab($, desk, item.id)}>
-                <Text color="suggestion">▸</Text> <Text bold>{item.label}</Text>
-              </Button>
-            ) : (
-              <Button key={`tab-${item.id}`} plain dimColor label={item.label} onPress={() => selectTab($, desk, item.id)} />
-            ),
-          )}
-        </Box>
-        {body}
       </Box>
     )
   })

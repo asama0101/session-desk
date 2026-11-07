@@ -152,10 +152,16 @@ test('the current branch is selected first; its stages show symbols, dates, the 
   await start($)
   const ui = await open($, e.calls)
   const lines = await texts(ui)
-  expect(lines).toContain('✓ ブランチを切る  —')
-  expect(lines.some(l => l.startsWith('✓ commit  ') && l.endsWith('  2 件'))).toBe(true)
+  // 日時は、右端の別の Text。経過の見出しは、選んだブランチの名前。
+  expect(lines).toContain('✓ ブランチを切る')
+  expect(lines).toContain('—')
+  expect(lines).toContain('✓ commit  2 件')
   expect(lines).toContain('● push  次: push')
   expect(lines).toContain('○ PR')
+  expect(lines).toContain('feat/a')
+  // 縦の線（レール）: 先頭は ┌、末尾は └、間は ├（8 段階）。
+  const rail = lines.filter(l => ['┌', '├', '└'].includes(l))
+  expect(rail).toEqual(['┌', '├', '├', '├', '├', '├', '├', '└'])
   await ui.unmount()
 })
 
@@ -332,7 +338,10 @@ test('colors: done is green, now is yellow and bold, todo is grey', async ($, on
   const e = engine(on)
   await start($)
   const ui = await open($, e.calls)
-  expect(await textJson(ui, '✓ ブランチを切る  —')).toContain('"color":"success"')
+  expect(await textJson(ui, '✓ ブランチを切る')).toContain('"color":"success"')
+  // レールの線は、済は緑、今は黄色、これからは灰色。
+  expect(await textJson(ui, '┌')).toContain('"color":"success"')
+  expect(await textJson(ui, '└')).toContain('"color":"inactive"')
   const now = await textJson(ui, '● push  次: push')
   expect(now).toContain('"color":"warning"')
   expect(now).toContain('"bold":true')
@@ -374,95 +383,6 @@ test('colors: editing is yellow in the list', async ($, on) => {
   await ui.unmount()
 })
 
-test('yes/no: the next step on the current branch is asked, and yes sends the request to Claude once', async ($, on) => {
-  const e = engine(on)
-  await start($)
-  const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('push しますか？')
-  expect(await hasText(ui, 'はい')).toBe(true)
-  expect(await hasText(ui, 'いいえ')).toBe(true)
-  await pressText(ui, 'はい')
-  await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」を push してください'])
-  expect(await hasText(ui, 'はい')).toBe(false)
-  expect(await texts(ui)).not.toContain('push しますか？')
-  await ui.unmount()
-})
-
-test('yes/no: no sends nothing and hides the question', async ($, on) => {
-  const e = engine(on)
-  await start($)
-  const ui = await open($, e.calls)
-  await pressText(ui, 'いいえ')
-  await flush()
-  expect(e.submitted).toEqual([])
-  expect(await hasText(ui, 'はい')).toBe(false)
-  await ui.unmount()
-})
-
-test('yes/no: editing asks whether to commit', async ($, on) => {
-  const e = engine(on, { status: ' M x\0' })
-  await start($)
-  const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('commit しますか？')
-  await pressText(ui, 'はい')
-  await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」の未コミットの変更を commit してください'])
-  await ui.unmount()
-})
-
-test('yes/no: nothing is asked for a branch that is not the current one', async ($, on) => {
-  const e = engine(on)
-  await start($)
-  const ui = await open($, e.calls)
-  await ui.press({ key: 'branch-docs/b' })
-  await flush()
-  expect(await hasText(ui, 'はい')).toBe(false)
-  await ui.unmount()
-})
-
-test('yes/no: deleting needs a second confirmation before anything is sent', async ($, on) => {
-  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
-  await start($)
-  const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('削除しますか？')
-  await pressText(ui, 'はい')
-  await flush()
-  expect(e.submitted).toEqual([])
-  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
-  await pressText(ui, '削除する')
-  await flush()
-  expect(e.submitted).toEqual(['はい。マージ済みの作業ブランチ「docs/b」を削除してください'])
-  await ui.unmount()
-})
-
-test('yes/no: backing out of the second confirmation sends nothing', async ($, on) => {
-  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
-  await start($)
-  const ui = await open($, e.calls)
-  await pressText(ui, 'はい')
-  await flush()
-  await pressText(ui, 'やめる')
-  await flush()
-  expect(e.submitted).toEqual([])
-  expect(await hasText(ui, '削除する')).toBe(false)
-  await ui.unmount()
-})
-
-test('yes/no: the PR request names the repository default branch (master)', async ($, on) => {
-  const refs =
-    'refs/heads/feat/a\tA1\t2026-11-05T11:40:00+09:00\nrefs/heads/master\tM1\t2026-11-01T09:00:00+09:00\n' +
-    'refs/remotes/origin/feat/a\tA1\t2026-11-05T11:40:00+09:00\nrefs/remotes/origin/master\tM1\t2026-11-01T09:00:00+09:00\n'
-  const e = engine(on, { refs, symref: 'refs/remotes/origin/master\n' })
-  await start($)
-  const ui = await open($, e.calls)
-  expect(await texts(ui)).toContain('PR を作りますか？')
-  await pressText(ui, 'はい')
-  await flush()
-  expect(e.submitted).toEqual(['はい。ブランチ「feat/a」の PR を master 向けに作ってください'])
-  await ui.unmount()
-})
-
 test('with no branch to show (the list was too long), the screen says ブランチがありません, not the default-branch note', async ($, on) => {
   const e = engine(on, { refsTruncated: true })
   await start($)
@@ -479,59 +399,6 @@ test('the problem texts tell a git failure apart from a timeout', async ($, on) 
   await start($)
   const ui = await open($, e.calls)
   expect(await texts(ui)).toContain('git の実行に失敗しました')
-  await ui.unmount()
-})
-
-test('yes/no: a half-finished delete confirmation does not follow you to another branch', async ($, on) => {
-  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
-  await start($)
-  const ui = await open($, e.calls)
-  await pressText(ui, 'はい')
-  await flush()
-  expect(await texts(ui)).toContain('本当に docs/b を削除しますか？')
-  await ui.press({ key: 'branch-main' })
-  await flush()
-  await ui.press({ key: 'branch-docs/b' })
-  await settle(e.calls)
-  const lines = await texts(ui)
-  expect(lines).toContain('削除しますか？')
-  expect(lines).not.toContain('本当に docs/b を削除しますか？')
-  await ui.unmount()
-})
-
-test('yes/no: if the request cannot be sent, the user is told', async ($, on) => {
-  const e = engine(on, { submitFails: true })
-  await start($)
-  const ui = await open($, e.calls)
-  await pressText(ui, 'はい')
-  await flush()
-  await flush()
-  expect(e.toasts).toEqual(['依頼を送れませんでした'])
-  await ui.unmount()
-})
-
-test('yes/no: the second delete confirmation can wrap in a narrow panel', async ($, on) => {
-  const e = engine(on, { head: { stdout: 'refs/heads/docs/b\n' } })
-  await start($)
-  const ui = await open($, e.calls)
-  // 帯の行も折り返すので、数が増えたかで確かめる。
-  const wraps = async () => JSON.stringify(await ui.drawn()).split('"flexWrap":"wrap"').length
-  const before = await wraps()
-  await pressText(ui, 'はい')
-  await flush()
-  expect(await wraps()).toBeGreaterThan(before)
-  await ui.unmount()
-})
-
-test('yes/no: after a failed send the question comes back, so it can be answered again', async ($, on) => {
-  const e = engine(on, { submitFails: true })
-  await start($)
-  const ui = await open($, e.calls)
-  await pressText(ui, 'はい')
-  await flush()
-  await flush()
-  expect(e.toasts).toEqual(['依頼を送れませんでした'])
-  expect(await hasText(ui, 'はい')).toBe(true)
   await ui.unmount()
 })
 
@@ -560,7 +427,124 @@ test('a token in a remote URL never reaches the screen', async () => {
     columns: 80,
     offsetMin: 0,
     onSelect() {},
-    act: { dismissed: [], confirm: null, onYes() {}, onNo() {}, onConfirm() {} },
+    more: { open: false, onToggle() {} },
+    onNext() {},
+    busy: false,
   })
   expect(JSON.stringify(tree)).not.toContain('tok123')
+})
+
+// 一覧が長いとき: 閉じていれば先頭から 5 件（いまのブランチと選んだブランチは外れていても出す）。「もっと見る」で全部。
+const manyBranches = (count: number, currentIndex: number) => ({
+  problem: null,
+  remotes: [{ name: 'origin', url: 'github.com/a/b' }],
+  warnings: [],
+  gitAt: '00:00:00',
+  ghAt: null,
+  branches: Array.from({ length: count }, (_, i) => ({
+    name: `b${i + 1}`,
+    kind: 'other',
+    isCurrent: i === currentIndex,
+    facts: { originDiff: null },
+    stages: [],
+    now: { id: null, text: '-' },
+  })),
+})
+
+test('git: a long branch list shows 5 rows; the current and chosen branch stay in even when beyond them', async () => {
+  const ui = { Box: 'Box', Text: 'Text', Button: 'Button' }
+  const draw = (over: { selected: string | null; open: boolean; current: number }) =>
+    JSON.stringify(
+      renderBranchTab(ui, {
+        snapshot: manyBranches(8, over.current) as any,
+        selected: over.selected,
+        columns: 80,
+        offsetMin: 0,
+        onSelect() {},
+        more: { open: over.open, onToggle() {} },
+        onNext() {},
+    busy: false,
+      }),
+    )
+  const rowsIn = (json: string) => [...json.matchAll(/"key":"branch-(b\d+)"/g)].map(m => m[1])
+  const closed = draw({ selected: null, open: false, current: 0 })
+  expect(new Set(rowsIn(closed))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5']))
+  expect(closed).toContain('▾ もっと見る（あと 3 件）')
+  // いまのブランチが 7 番目でも、一覧に出る。あと何件かも、出ている行を引いて数える。
+  const withCurrent = draw({ selected: null, open: false, current: 6 })
+  expect(new Set(rowsIn(withCurrent))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5', 'b7']))
+  expect(withCurrent).toContain('あと 2 件')
+  // 選んだブランチも同じ。
+  expect(new Set(rowsIn(draw({ selected: 'b8', open: false, current: 0 })))).toEqual(new Set(['b1', 'b2', 'b3', 'b4', 'b5', 'b8']))
+  const open = draw({ selected: null, open: true, current: 0 })
+  expect(rowsIn(open)).toHaveLength(8)
+  expect(open).toContain('▴ 閉じる')
+  // 5 件以下なら、ボタンはない。
+  expect(JSON.stringify(renderBranchTab(ui, { snapshot: manyBranches(5, 0) as any, selected: null, columns: 80, offsetMin: 0, onSelect() {}, more: { open: false, onToggle() {} }, onNext() {} }))).not.toContain('more-git')
+})
+
+test('next button: the current branch gets a button on its 今 row; pressing it sends the request once', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.find({ key: 'git-next' }))).toContain('▶ push する')
+  await ui.press({ key: 'git-next' })
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
+  await ui.unmount()
+})
+
+test('next button: editing offers commit', async ($, on) => {
+  const e = engine(on, { status: ' M x\0' })
+  await start($)
+  const ui = await open($, e.calls)
+  expect(JSON.stringify(await ui.find({ key: 'git-next' }))).toContain('▶ commit する')
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」の未コミットの変更を commit してください'])
+  await ui.unmount()
+})
+
+test('next button: a branch that is not the current one has no button', async ($, on) => {
+  const e = engine(on)
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'branch-docs/b' })
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('next button: while Claude is working it is a dim label that cannot be pressed (a pending question must not collide with the request)', async ($, on) => {
+  const e = engine(on)
+  on('turn.start', (_: any, ev: any) => ({ turnId: ev.turnId }))
+  on('turn.complete', (_: any, ev: any) => ({ text: ev.answer }))
+  await start($)
+  const ui = await open($, e.calls)
+  expect(await ui.find({ key: 'git-next' })).toBeDefined()
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '▶ push する' })).toBeDefined()
+  await $.turn.complete({ answer: 'a', durationMs: 5, isAborted: false, turnId: 't1', reason: 'answer' })
+  await flush()
+  await flush()
+  expect(await ui.find({ key: 'git-next' })).toBeDefined()
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
+  await ui.unmount()
+})
+
+test('next button: a question dialog holds the keys, so the request is not sent and the person is told', async ($, on) => {
+  const e = engine(on)
+  on('prompt.fill', () => ({ isFilled: false, refusal: 'dialog', text: '' }))
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual([])
+  expect(e.toasts).toEqual(['質問や許可の待ち中です。先に答えてください'])
+  await ui.unmount()
 })
