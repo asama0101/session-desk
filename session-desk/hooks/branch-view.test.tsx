@@ -536,3 +536,15 @@ test('next button: while Claude is working it is a dim label that cannot be pres
   expect(e.submitted).toEqual(['ブランチ「feat/a」を push してください'])
   await ui.unmount()
 })
+
+test('next button: a question dialog holds the keys, so the request is not sent and the person is told', async ($, on) => {
+  const e = engine(on)
+  on('prompt.fill', () => ({ isFilled: false, refusal: 'dialog', text: '' }))
+  await start($)
+  const ui = await open($, e.calls)
+  await ui.press({ key: 'git-next' })
+  await flush()
+  expect(e.submitted).toEqual([])
+  expect(e.toasts).toEqual(['質問や許可の待ち中です。先に答えてください'])
+  await ui.unmount()
+})

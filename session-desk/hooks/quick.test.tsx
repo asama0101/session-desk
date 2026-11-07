@@ -164,6 +164,25 @@ test('quick: 5 phrases or fewer have no 「もっと見る」', async ($, on) =>
   await ui.unmount()
 })
 
+test('quick: a question dialog holds the keys, so a phrase is not sent and the person is told', async ($, on) => {
+  const { submitted } = fakeEngine(on)
+  const toasts: string[] = []
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('prompt.fill', () => ({ isFilled: false, refusal: 'dialog', text: '' }))
+  await start($)
+  const ui = await open($)
+  await ui.press({ key: 'quick-0' })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(submitted).toEqual([])
+  // ほかの通知（Git タブの更新の失敗など）は、この確認に関係しない。
+  expect(toasts.filter(t => t.startsWith('質問や許可'))).toEqual(['質問や許可の待ち中です。先に答えてください'])
+  await ui.unmount()
+})
+
 test('pressing a phrase submits its exact text', async ($, on) => {
   const { submitted } = fakeEngine(on)
   await start($)

@@ -234,6 +234,38 @@ test('pressing a step sends its exact text once and clears the steps', async ($,
   await ui.unmount()
 })
 
+test('a question dialog holds the keys: pressing a step sends nothing, keeps the steps and says why', async ($, on) => {
+  const s = engine(on)
+  on('prompt.fill', () => ({ isFilled: false, refusal: 'dialog', text: '' }))
+  await start($)
+  const ui = await mount($)
+  await turn($)
+  await ui.press({ key: 'band-step-1' })
+  await settle()
+  expect(s.submitted).toEqual([])
+  expect(s.toasts).toEqual(['質問や許可の待ち中です。先に答えてください'])
+  expect(await labels(ui)).toEqual(expect.arrayContaining(['案 A で進めて', '案 B で進めて']))
+  await ui.unmount()
+})
+
+test('with no dialog the probe leaves the draft alone: an empty append', async ($, on) => {
+  const s = engine(on)
+  const fills: unknown[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push({ text: e.text, mode: e.mode })
+
+    return { isFilled: true, text: '' }
+  })
+  await start($)
+  const ui = await mount($)
+  await turn($)
+  await ui.press({ key: 'band-step-1' })
+  await settle()
+  expect(fills).toEqual([{ text: '', mode: 'append' }])
+  expect(s.submitted).toEqual(['案 B で進めて'])
+  await ui.unmount()
+})
+
 // 同じ Pane は 1 つの面に 1 つしか置けないので、2 つの面に置いて、両方の押下を待たずに同時に走らせる。
 // 2 つの書き込みが競り、負けた側の update がやり直されても、送るのは 1 回だけ。
 test('two presses at the same time send once', async ($, on) => {

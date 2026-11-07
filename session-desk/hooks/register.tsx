@@ -446,6 +446,10 @@ async function askFork($: any, turnId: string): Promise<void> {
 // 選択肢を押すと、その文をそのまま送る。
 // 二度押しで 2 回送らないように、送る前に、書く時点の atom から選択肢を消す。
 async function pickStep($: any, i: number) {
+  // ダイアログが開いているあいだは、選択肢を消さずに、何も送らない。
+  if (await blockedByDialog($)) {
+    return
+  }
   let sent: { text: string; steps: string[]; recommended: number | null; turnId: string | null } | null = null
   await update($, band, b => {
     // update は書き込みが競り負けると、この関数をやり直す。書けた回の判断だけを残す。
@@ -479,12 +483,46 @@ async function pickStep($: any, i: number) {
   )
 }
 
+// 質問や許可の待ち（ダイアログ）が開いているか。空の文を下書きの後ろに足す呼び出しで調べる（下書きは変わらない）。
+// ダイアログが入力を持っているあいだ、エンジンは refusal: 'dialog' で断る。ほかのプラグインのフックが断ったときは、理由が付かない。
+// 理由が分からない断りは、入力欄を守る側（開いている）に倒す。入力欄がない（no_composer）とき、調べられないとき（呼び出しが失敗）は、開いていないとみなす。
+async function dialogOpen($: any): Promise<boolean> {
+  try {
+    const result = await $.prompt.fill({ text: '', mode: 'append' })
+
+    return result.isFilled === false && result.refusal !== 'no_composer'
+  } catch {
+    return false
+  }
+}
+
+// ダイアログが開いているなら、依頼を送らずに知らせる（質問の答えと、ボタンの依頼が衝突するため）。送ってよければ偽。
+async function blockedByDialog($: any): Promise<boolean> {
+  if (await dialogOpen($)) {
+    void Promise.resolve()
+      .then(() => $.ui.toast('質問や許可の待ち中です。先に答えてください'))
+      .catch(() => {})
+
+    return true
+  }
+
+  return false
+}
+
+// 定型文を送る。
+async function sendQuick($: any, text: string) {
+  if (await blockedByDialog($)) {
+    return
+  }
+  void $.prompt.submit({ text })
+}
+
 // Git タブの「次へ進む」を押す。同じ状態（key が同じ）での二度押しは、送らない。Claude が止まったら、また押せる。
 let nextSentKey: string | null = null
 
 async function pressNext($: any, next: Next) {
   // Claude が動いている間は送らない。質問や許可の待ちに依頼が割り込んで、答えが衝突するため。画面の押下が古いこともあるので、ここでも見る。
-  if ((await read($, band)).state === 'running' || nextSentKey === next.key) {
+  if ((await read($, band)).state === 'running' || nextSentKey === next.key || (await blockedByDialog($))) {
     return
   }
   nextSentKey = next.key
@@ -777,7 +815,7 @@ export const register: Register = on => {
                   plain
                   label="▶ 送信"
                   onPress={() => {
-                    void $.prompt.submit({ text })
+                    void sendQuick($, text)
                   }}
                 >
                   <Text color="suggestion">▶ 送信</Text>
