@@ -3,7 +3,7 @@ import type { Register } from 'claude-code'
 
 import type { Tab } from '../types'
 import { renderBranchTab } from './branch-view'
-import { collect } from './git'
+import { collect, enrich } from './git'
 import type { Run, Snapshot } from './git'
 import {
   DEFAULT_QUICK,
@@ -71,20 +71,37 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
     return
   }
   const cwd: string = await $.session.cwd()
-  const next = await collect(runOf($), (await read($, snapshot)) as Snapshot | null, {
+  const chosen = await read($, branchSel)
+  const collected = await collect(runOf($), (await read($, snapshot)) as Snapshot | null, {
     withGh,
     cwd,
-    selected: await read($, branchSel),
+    selected: chosen,
     now: () => new Date(),
   })
   if ((await $.session.cwd()) !== cwd) {
     return
   }
   if (withGh) {
-    desk.ghFailures = next.ghProblem ? desk.ghFailures + 1 : 0
+    desk.ghFailures = collected.ghProblem ? desk.ghFailures + 1 : 0
     desk.ghNextAt = Date.now() + ghDelayMs(desk.ghFailures)
   }
+  // 選んだブランチがなくなったら、選択を外して、チェックアウト中のブランチに戻す。
+  const gone = chosen !== null && !collected.branches.some(b => b.name === chosen)
+  if (gone) {
+    await update($, branchSel, () => null)
+  }
+  const target = gone || chosen === null ? collected.branches.find(b => b.isCurrent)?.name : chosen
+  const next = target === undefined ? collected : await enrich(runOf($), collected, target)
   await update($, snapshot, () => next)
+}
+
+async function selectBranch($: any, name: string) {
+  await update($, branchSel, () => name)
+  const snap = (await read($, snapshot)) as Snapshot | null
+  if (snap !== null) {
+    const next = await enrich(runOf($), snap, name)
+    await update($, snapshot, () => next)
+  }
 }
 
 async function selectTab($: any, desk: Desk, id: Tab) {
@@ -200,7 +217,7 @@ export const register: Register = on => {
           selected: await read($, branchSel),
           columns: e.props.bodyColumns,
           offsetMin: -new Date().getTimezoneOffset(),
-          onSelect: name => void update($, branchSel, () => name),
+          onSelect: name => void selectBranch($, name),
         },
       )
     } else {

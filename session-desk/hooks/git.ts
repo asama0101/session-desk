@@ -270,3 +270,21 @@ export async function requeryPr(run: Run, name: string, tip: string): Promise<{ 
 
   return adoptPr(own, p => relation.get(p.number) ?? 'other')
 }
+
+// 選んだブランチだけ、日時を取り、PR の一覧が上限に達していたときは PR を引き直す。
+export async function enrich(run: Run, snap: Snapshot, name: string): Promise<Snapshot> {
+  const row = snap.branches.find(b => b.name === name)
+  if (row === undefined || row.kind === 'default') {
+    return snap
+  }
+  let next = applyDetail(row, await detailOf(run, name, snap.baseRef))
+  if (snap.prCapped && next.facts.pr === null && snap.ghAt !== null) {
+    const tip = await git(run, 'rev-parse', '--verify', `refs/heads/${name}`)
+    if (usable(tip)) {
+      const found = await requeryPr(run, name, tip.stdout.trim())
+      next = buildRow(next.name, next.kind, next.isCurrent, { ...next.facts, pr: found.pr, prKnown: found.known })
+    }
+  }
+
+  return { ...snap, branches: snap.branches.map(b => (b === row ? next : b)) }
+}

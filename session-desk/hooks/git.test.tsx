@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { collect, applyDetail, detailOf, pickBudget, requeryPr } from './git'
+import { applyDetail, collect, detailOf, enrich, pickBudget, requeryPr } from './git'
 import type { Run, Snapshot } from './git'
 
 type Reply = { exitCode?: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | 'reject'
@@ -250,4 +250,42 @@ test('requeryPr adopts a PR found by --head, and reports unknown when gh fails',
   expect(r.pr?.state).toBe('MERGED')
   const failed = await requeryPr(fake({ 'gh pr list --state all --head docs/b --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews': { exitCode: 1 } }).run, 'docs/b', 'B1')
   expect(failed).toEqual({ pr: null, known: false })
+})
+
+const FEAT_REFLOG = {
+  'reflog show --date=iso-strict --format=%gd%x09%gs refs/heads/feat/a': ok(
+    'feat/a@{2026-11-05T09:00:00+09:00}\tbranch: Created from main\n',
+  ),
+  'log --format=%cI refs/remotes/origin/main..refs/heads/feat/a': ok('2026-11-05T11:40:00+09:00\n2026-11-05T09:30:00+09:00\n'),
+}
+
+test('enrich fills the dates of the chosen branch only', async () => {
+  const f = fake(FEAT_REFLOG)
+  const snap = await collect(f.run, null, OPTS)
+  const rich = await enrich(f.run, snap, 'feat/a')
+  expect(row(rich, 'feat/a')?.stages[0]?.at).toBe('2026-11-05T09:00:00+09:00')
+  expect(row(rich, 'feat/a')?.stages[1]?.at).toBe('2026-11-05T09:30:00+09:00')
+  expect(row(rich, 'docs/b')?.stages[0]?.at).toBe(null)
+  expect(f.violations).toEqual([])
+})
+
+test('enrich leaves the default branch, and an unknown name, untouched', async () => {
+  const f = fake()
+  const snap = await collect(f.run, null, OPTS)
+  expect(await enrich(f.run, snap, 'main')).toBe(snap)
+  expect(await enrich(f.run, snap, 'nope')).toBe(snap)
+})
+
+test('when the PR list hit its limit, enrich asks gh for the chosen branch alone and turns unknown into a real answer', async () => {
+  const many = Array.from({ length: 200 }, (_, i) => GH_PR({ number: 100 + i, headRefName: `other${i}`, state: 'CLOSED' }))
+  const headKey = 'gh pr list --state all --head feat/a --json number,state,isDraft,reviewDecision,createdAt,mergedAt,headRefName,headRefOid,isCrossRepository,latestReviews'
+  const f = fake({ gh: ok(JSON.stringify(many)), 'rev-parse --verify refs/heads/feat/a': ok('A1\n'), [headKey]: ok('[]'), ...FEAT_REFLOG })
+  const snap = await collect(f.run, null, OPTS)
+  expect(snap.prCapped).toBe(true)
+  expect(row(snap, 'feat/a')?.facts.prKnown).toBe(false)
+  expect(statuses(snap, 'feat/a')?.slice(4)).toEqual(['unknown', 'unknown', 'unknown', 'unknown'])
+  const rich = await enrich(f.run, snap, 'feat/a')
+  expect(f.calls).toContain(headKey)
+  expect(row(rich, 'feat/a')?.facts.prKnown).toBe(true)
+  expect(statuses(rich, 'feat/a')?.slice(4)).toEqual(['todo', 'todo', 'todo', 'todo'])
 })
