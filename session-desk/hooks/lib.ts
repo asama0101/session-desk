@@ -27,12 +27,8 @@ export function preview(text: string): string {
   return flat.length <= PREVIEW_CHARS ? flat : `${flat.slice(0, PREVIEW_CHARS)}…`
 }
 
-// 定型文の初期値。保存した値が読めないときも、これに戻す。
-export const DEFAULT_QUICK: readonly string[] = [
-  '残りのタスクは？',
-  '選択肢ごとにメリット・デメリットを明確にして推奨および影響をレポートして',
-  'Artifact使ってデザインを見せて',
-]
+// 定型文の初期値（なし）。保存した値が読めないときも、これに戻す。
+export const DEFAULT_QUICK: readonly string[] = []
 
 // ストアから読んだ値が、空でない文字列の配列のときだけ返す。外から来る値なので検証する。
 export function parseQuick(raw: unknown): string[] | null {

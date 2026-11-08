@@ -180,7 +180,7 @@ test('the tab row sits below the band and above the tab body', async ($, on) => 
   const at = (w: string) => flat.indexOf(w)
   expect(at('Session')).toBeGreaterThan(-1)
   expect(at('Session')).toBeLessThan(at('tab-quick'))
-  expect(at('tab-quick')).toBeLessThan(at('残りのタスクは？'))
+  expect(at('tab-quick')).toBeLessThan(at('quick-new-0'))
   await ui.unmount()
 })
 
