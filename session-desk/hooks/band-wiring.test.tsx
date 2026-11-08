@@ -662,6 +662,26 @@ test('the ▸ of MCP, memory and skills rows shows each item, biggest first, and
   await ui.unmount()
 })
 
+test('the 凡例 button hides the legend rows and shows them again', async ($, on) => {
+  engine(on)
+  fakeData(on, { usage: withBreakdown({}, [cat('Messages', 'used', 5000), cat('MCP tools', 'used', 10000)]) })
+  await start($)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  await $.turn.complete(done())
+  await settle()
+  await settle()
+  expect(await draw(ui)).toContain('メッセージ')
+  await ui.press({ key: 'band-legend' })
+  await settle()
+  const hidden = await draw(ui)
+  expect(hidden).not.toContain('メッセージ')
+  expect(hidden).toContain('概算')
+  await ui.press({ key: 'band-legend' })
+  await settle()
+  expect(await draw(ui)).toContain('メッセージ')
+  await ui.unmount()
+})
+
 // ---- 最終レビューの修正: 取得のまとめ方と「正確に数える」 ----
 
 test('a sub-agent tool.call does not fetch the usage', async ($, on) => {

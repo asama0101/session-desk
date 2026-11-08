@@ -29,7 +29,7 @@ const CATEGORY_NAMES: Record<CategoryId, string> = {
 }
 
 // 内訳の表示用の値。トークン数の多い順、空きは最後。「あと」は kind が used の合計から数える。
-export function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean): BandArgs['breakdown'] {
+export function breakdownArgs(bd: any, ui: { detail: string[]; legendHidden: boolean }, exact: boolean): BandArgs['breakdown'] {
   if (bd === null) {
     return null
   }
@@ -58,6 +58,7 @@ export function breakdownArgs(bd: any, ui: { detail: string[] }, exact: boolean)
 
   return {
     exact,
+    legendHidden: ui.legendHidden,
     rows,
     compactIn: compactIn(used, bd.autoCompactThreshold, bd.isAutoCompactEnabled),
     threshold: bd.autoCompactThreshold ?? null,

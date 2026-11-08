@@ -20,6 +20,8 @@ export type BandArgs = {
   breakdown: {
     // 「正確に数える」の結果を出しているとき真（「概算」の代わりに「正確」と出す）。
     exact: boolean
+    // 色分けの凡例（■ の行）を隠しているとき真。
+    legendHidden: boolean
     rows: { id: CategoryId; name: string; tokens: number; detail: { name: string; tokens: number }[] | null; detailOpen: boolean }[]
     compactIn: number | null
     threshold: number | null
@@ -30,6 +32,7 @@ export type BandArgs = {
   on: {
     toggleAgents(): void
     exact(): void
+    toggleLegend(): void
     toggleDetail(id: CategoryId): void
     pick(i: number): void
   }
@@ -151,7 +154,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
         {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
           <Box flexDirection="column" marginTop={1}>
-            <Box flexDirection="column">
+            {!bd.legendHidden && <Box flexDirection="column">
               {bd.rows.map(row => (
                 <Box key={`bd-${row.id}`} gap={1}>
                   <Text color={CATEGORY_COLORS[row.id]}>■</Text>
@@ -164,8 +167,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
                   )}
                 </Box>
               ))}
-            </Box>
-            {bd.rows.map(
+            </Box>}
+            {!bd.legendHidden && bd.rows.map(
               row =>
                 row.detail !== null &&
                 row.detailOpen &&
@@ -177,7 +180,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
                   </Box>
                 )),
             )}
-            <Box gap={2} flexWrap="wrap" marginTop={1}>
+            <Box gap={2} flexWrap="wrap" marginTop={bd.legendHidden ? 0 : 1}>
               {bd.compactIn !== null && (
                 <Text dimColor>
                   {bd.threshold === null
@@ -188,6 +191,9 @@ export function renderBand(ui: Ui, a: BandArgs) {
               <Text dimColor>{bd.exact ? '正確' : '概算'}</Text>
               <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
                 <Text color="suggestion">正確に数える</Text>
+              </Button>
+              <Button key="band-legend" plain label={bd.legendHidden ? '凡例を出す' : '凡例を隠す'} onPress={() => a.on.toggleLegend()}>
+                <Text dimColor>{bd.legendHidden ? '▸ 凡例' : '▾ 凡例'}</Text>
               </Button>
             </Box>
           </Box>
@@ -308,7 +314,8 @@ export function renderBand(ui: Ui, a: BandArgs) {
           {hasHead && a.cwd !== null && <Text dimColor>{`${ICONS.dir} ${clean(fitTail(a.cwd, Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2 - ICON_CELLS)))}`}</Text>}
           {shown.map(([key, , node], n) => (
             <Box key={`sec-${key}`} flexDirection="column">
-              {n > 0 && <Box marginY={1}>{thin}</Box>}
+              {n > 0 && key !== 'foot' && <Box marginY={1}>{thin}</Box>}
+              {n > 0 && key === 'foot' && <Box marginTop={1} />}
               {node}
             </Box>
           ))}

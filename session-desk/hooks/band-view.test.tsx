@@ -26,6 +26,7 @@ const BASE: BandArgs = {
   on: {
     toggleAgents() {},
     exact() {},
+    toggleLegend() {},
     toggleDetail() {},
     pick() {},
   },
@@ -129,6 +130,7 @@ test('limits, git, and omitted lines', async () => {
 
 const BREAKDOWN = (compact: number | null = 40_000) => ({
   exact: false,
+  legendHidden: false,
   compactIn: compact,
   threshold: 900_000,
   rows: [
@@ -255,8 +257,8 @@ test('the panel has no outer frame: it is headed Session + model; sections are s
   expect(textsOf(tree).slice(0, 3)).toEqual(['Session', '🤖', 'Opus 5.5'])
   expect(find(tree, n => n.props?.key === 'sec-top')[0]!.props.marginTop).toBeUndefined()
   expect(find(tree, n => n.props?.key === 'sec-top')[0]!.props.marginY).toBeUndefined()
-  // 見出しと最初の段のあいだに線も空きも無い（見出しは最初の段の一部）。段と段のあいだに細い線、提案の前に二重線。
-  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(3)
+  // 見出しと最初の段のあいだに線も空きも無い（見出しは最初の段の一部）。段と段のあいだに細い線（利用枠とブランチの段の上は除く）、提案の前に二重線。
+  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(2)
   expect(textsOf(tree).filter(x => /^═+$/.test(x))).toHaveLength(1)
   const flat = JSON.stringify(tree)
   expect(flat.indexOf('═')).toBeGreaterThan(flat.indexOf('TABS'))
@@ -289,6 +291,23 @@ test('the percent and the tokens text take the usage colour: green under 60, yel
     expect(colorOf(tree, `${percent}%`)).toBe(color)
     expect(colorOf(tree, '860k / 1M')).toBe(color)
   }
+})
+
+test('legendHidden hides the legend rows and their details, keeps the compact line and the buttons, and flips the toggle label', async () => {
+  const shown = draw({ breakdown: BREAKDOWN() })
+  expect(labelsOf(shown)).toContain('凡例を隠す')
+  const hidden = draw({ breakdown: { ...BREAKDOWN(), legendHidden: true } })
+  const t = textsOf(hidden)
+  for (const w of ['Messages', 'MCP tools', 'playwright']) expect(t).not.toContain(w)
+  expect(t).toContain('自動 compact まで あと 40k（閾値 900k）')
+  expect(labelsOf(hidden)).toEqual(expect.arrayContaining(['正確に数える', '凡例を出す']))
+  expect(byKey(hidden, 'band-detail-mcp')).toBeUndefined()
+})
+
+test('the limits section has no rule above it, only one blank row', async () => {
+  const tree = draw({ context: CTX(50), limits: [{ label: '5時間枠', percent: 32, remaining: null }] })
+  expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(0)
+  expect(textsOf(tree)).toContain('⏳ 5時間枠')
 })
 
 test('detail closed hides the per-item rows', async () => {
