@@ -1,21 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 1004" width="960" height="1004" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 960 960" width="960" height="960" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15">
   <title id="t">Session Desk のパネル（イメージ）</title>
-  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは、上から順に、見出し（Session と Opus 5.5 / high）とディレクトリとゴールと停止中の状態、コンテキストの使用率 58% と色分けのバーと縦の凡例、5 時間枠と 7 日枠のバーとブランチ名、タブの行（定型文・履歴・Git。選んだ定型文は水色の太字に下線）、新しい定型文を入れる入力欄、3 件の定型文が並ぶ。各段は細い線で区切られる。定型文の操作は、どの行も「送信」「削除」「上へ」「下へ」の順で、先頭の上へと末尾の下へは薄い字。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
+  <desc id="d">左に Claude Code の会話と入力欄、右にサイドパネル。パネルは、上から順に、見出し（Session と Opus 5.5 / high）とディレクトリとゴールと停止中の状態、コンテキストの使用率 58% と色分けのバーと縦の凡例（「▾ 凡例」で隠せる）、線をはさまずに 5 時間枠と 7 日枠のバーとブランチ名、タブの行（定型文・履歴・Git。選んだ定型文は水色の太字に下線）、新しい定型文を入れる入力欄、3 件の定型文が並ぶ。状態・コンテキスト・タブのあいだは細い線で区切られる。定型文の操作は、どの行も「送信」「削除」「上へ」「下へ」の順で、先頭の上へと末尾の下へは薄い字。入力欄の上に「サイドパネルの開閉」ボタンがある。</desc>
 
   <!-- 端末 -->
-  <rect x="0" y="0" width="960" height="1004" rx="10" fill="#1e1e1e"/>
-  <rect x="0.5" y="0.5" width="959" height="1003" rx="10" fill="none" stroke="#3c3c3c"/>
+  <rect x="0" y="0" width="960" height="960" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="959" height="959" rx="10" fill="none" stroke="#3c3c3c"/>
 
   <!-- 左: 会話と入力欄、開閉ボタン -->
   <text x="24" y="40" fill="#858585">&gt; 残りのタスクは？</text>
   <text x="24" y="72" fill="#d4d4d4">● 未完了のタスクは 2 件です。</text>
   <text x="24" y="98" fill="#858585">   1. README の画像を足す</text>
   <text x="24" y="122" fill="#858585">   2. zip での導入手順を書く</text>
-  <rect x="24" y="876" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="38" y="896" fill="#b1b9f9">サイドパネルの開閉</text>
-  <rect x="24" y="918" width="560" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
-  <text x="40" y="954" fill="#858585">&gt;</text>
-  <line x1="608" y1="0" x2="608" y2="1004" stroke="#3c3c3c"/>
+  <rect x="24" y="832" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="38" y="852" fill="#b1b9f9">サイドパネルの開閉</text>
+  <rect x="24" y="874" width="560" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
+  <text x="40" y="910" fill="#858585">&gt;</text>
+  <line x1="608" y1="0" x2="608" y2="960" stroke="#3c3c3c"/>
 
   <!-- 右: パネル（帯、タブ、定型文） -->
   <text x="632" y="40" fill="#d4d4d4" font-weight="bold">Session</text>
@@ -56,38 +56,38 @@
   <text x="632" y="436" fill="#858585">自動 compact まで あと 40k</text>
   <text x="632" y="458" fill="#858585">概算</text>
   <text x="682" y="458" fill="#b1b9f9">正確に数える</text>
-  <line x1="632" y1="497" x2="936" y2="497" stroke="#464a54"/>
-  <text x="632" y="546" fill="#858585">⏳ 5時間枠</text>
-  <rect x="738" y="537" width="60" height="10" fill="#3a3d44"/><rect x="738" y="537" width="19" height="10" fill="#6fcf97"/>
-  <text x="818" y="546" fill="#6fcf97">32%</text>
-  <text x="850" y="546" fill="#858585">残り 3h10m</text>
-  <text x="632" y="568" fill="#858585">📅 7日枠</text>
-  <rect x="738" y="559" width="60" height="10" fill="#3a3d44"/><rect x="738" y="559" width="10" height="10" fill="#6fcf97"/>
-  <text x="818" y="568" fill="#6fcf97">11%</text>
-  <text x="632" y="590" fill="#4fd6e0">🌿 main</text>
-  <text x="708" y="590" fill="#d4d4d4">未 commit 0</text>
-  <line x1="632" y1="629" x2="936" y2="629" stroke="#464a54"/>
-  <text x="632" y="678" fill="#4fd6e0" font-weight="bold">💬 定型文</text>
-  <line x1="632" y1="682" x2="690" y2="682" stroke="#4fd6e0"/>
-  <text x="754" y="678" fill="#858585">履歴</text>
-  <text x="814" y="678" fill="#858585">Git</text>
-  <rect x="632" y="705" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
-  <text x="644" y="722" fill="#858585">新しい定型文を入力して Enter</text>
-  <text x="632" y="766" fill="#d4d4d4">残りのタスクは？</text>
-  <text x="632" y="788" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="788" fill="#ff6b80">× 削除</text>
-  <text x="772" y="788" fill="#555a65">▲ 上へ</text>
-  <text x="842" y="788" fill="#858585">▼ 下へ</text>
-  <text x="632" y="832" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
-  <text x="632" y="854" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
-  <text x="632" y="876" fill="#d4d4d4">して</text>
-  <text x="632" y="898" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="898" fill="#ff6b80">× 削除</text>
-  <text x="772" y="898" fill="#858585">▲ 上へ</text>
-  <text x="842" y="898" fill="#858585">▼ 下へ</text>
-  <text x="632" y="942" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
-  <text x="632" y="964" fill="#b1b9f9">▶ 送信</text>
-  <text x="702" y="964" fill="#ff6b80">× 削除</text>
-  <text x="772" y="964" fill="#858585">▲ 上へ</text>
-  <text x="842" y="964" fill="#555a65">▼ 下へ</text>
+  <text x="806" y="458" fill="#858585">▾ 凡例</text>
+  <text x="632" y="502" fill="#858585">⏳ 5時間枠</text>
+  <rect x="738" y="493" width="60" height="10" fill="#3a3d44"/><rect x="738" y="493" width="19" height="10" fill="#6fcf97"/>
+  <text x="818" y="502" fill="#6fcf97">32%</text>
+  <text x="850" y="502" fill="#858585">残り 3h10m</text>
+  <text x="632" y="524" fill="#858585">📅 7日枠</text>
+  <rect x="738" y="515" width="60" height="10" fill="#3a3d44"/><rect x="738" y="515" width="10" height="10" fill="#6fcf97"/>
+  <text x="818" y="524" fill="#6fcf97">11%</text>
+  <text x="632" y="546" fill="#4fd6e0">🌿 main</text>
+  <text x="708" y="546" fill="#d4d4d4">未 commit 0</text>
+  <line x1="632" y1="585" x2="936" y2="585" stroke="#464a54"/>
+  <text x="632" y="634" fill="#4fd6e0" font-weight="bold">💬 定型文</text>
+  <line x1="632" y1="638" x2="690" y2="638" stroke="#4fd6e0"/>
+  <text x="754" y="634" fill="#858585">履歴</text>
+  <text x="814" y="634" fill="#858585">Git</text>
+  <rect x="632" y="661" width="304" height="26" rx="4" fill="none" stroke="#5a5a5a"/>
+  <text x="644" y="678" fill="#858585">新しい定型文を入力して Enter</text>
+  <text x="632" y="722" fill="#d4d4d4">残りのタスクは？</text>
+  <text x="632" y="744" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="744" fill="#ff6b80">× 削除</text>
+  <text x="772" y="744" fill="#555a65">▲ 上へ</text>
+  <text x="842" y="744" fill="#858585">▼ 下へ</text>
+  <text x="632" y="788" fill="#d4d4d4">選択肢ごとにメリット・デメリットを</text>
+  <text x="632" y="810" fill="#d4d4d4">明確にして推奨および影響をレポート</text>
+  <text x="632" y="832" fill="#d4d4d4">して</text>
+  <text x="632" y="854" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="854" fill="#ff6b80">× 削除</text>
+  <text x="772" y="854" fill="#858585">▲ 上へ</text>
+  <text x="842" y="854" fill="#858585">▼ 下へ</text>
+  <text x="632" y="898" fill="#d4d4d4">Artifact使ってデザインを見せて</text>
+  <text x="632" y="920" fill="#b1b9f9">▶ 送信</text>
+  <text x="702" y="920" fill="#ff6b80">× 削除</text>
+  <text x="772" y="920" fill="#858585">▲ 上へ</text>
+  <text x="842" y="920" fill="#555a65">▼ 下へ</text>
 </svg>
