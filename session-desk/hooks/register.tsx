@@ -73,7 +73,7 @@ const agentsView = atom(
 )
 const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
-  { exact: false, detail: [] as string[] },
+  { exact: false, detail: [] as string[], legendHidden: false },
 )
 
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
@@ -330,6 +330,10 @@ async function countExactly($: any) {
 
 async function toggleDetail($: any, id: string) {
   await update($, bandUi, v => ({ ...v, detail: v.detail.includes(id) ? v.detail.filter(d => d !== id) : [...v.detail, id] }))
+}
+
+async function toggleLegend($: any) {
+  await update($, bandUi, v => ({ ...v, legendHidden: !v.legendHidden }))
 }
 
 // サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
@@ -838,7 +842,7 @@ export const register: Register = on => {
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。
           steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, recommended: b.recommended },
-          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
+          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleLegend: () => void toggleLegend($).catch(() => {}), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
           between: <Box flexDirection="column">
               <Box gap={3}>
                 {TABS.map(item =>
