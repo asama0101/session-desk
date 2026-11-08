@@ -1,6 +1,6 @@
 // セッション帯の表示。受け取った値を描くだけで、`$` も git も呼ばない。
 import { barCells, BRANCH_COLOR, CATEGORY_COLORS, EFFORT_COLORS, fitTail, ICON_CELLS, ICONS, formatDuration, formatTokens, modelColor, prettyModel, usageColor } from './band'
-import type { AgentRow, CategoryId, LimitRow } from './band'
+import type { CategoryId, LimitRow } from './band'
 import { stripControl } from './lib'
 
 type Ui = { Box: any; Text: any; Button: any }
@@ -10,7 +10,6 @@ export type BandArgs = {
   run: { state: 'running' | 'stopped' | null; tool: string | null; elapsedMs: number | null }
   lastTurn: { durationMs: number; tokens: number } | null
   stop: 'error' | 'refusal' | 'aborted' | null
-  agents: { running: number; rows: AgentRow[]; open: boolean }
   model: string | null
   // 今のモデルの effort（low・medium・high・xhigh・max など）。読めなければ null。
   effort: string | null
@@ -30,7 +29,6 @@ export type BandArgs = {
   git: { branch: string | null; dirtyCount: number | null } | null
   steps: { items: string[]; reason: string; recommended: number | null } | null
   on: {
-    toggleAgents(): void
     exact(): void
     toggleLegend(): void
     toggleDetail(id: CategoryId): void
@@ -54,11 +52,6 @@ const RULE_WIDTH = 36
 const LINE_COLOR = '#6b7080'
 
 const STOP_TEXT = { error: 'エラーで停止', refusal: '拒否で停止', aborted: '中断' } as const
-const AGENT_MARK = {
-  running: { mark: '●', color: 'blue', word: '実行中' },
-  waiting: { mark: '◌', color: 'gray', word: '待機' },
-  done: { mark: '○', color: 'gray', word: '完了' },
-} as const
 
 export function renderBand(ui: Ui, a: BandArgs) {
   const { Box, Text, Button } = ui
@@ -109,29 +102,6 @@ export function renderBand(ui: Ui, a: BandArgs) {
         {a.lastTurn !== null && <Text>{`直近 ${formatDuration(a.lastTurn.durationMs)}`}</Text>}
         {a.lastTurn !== null && a.lastTurn.tokens > 0 && <Text>{`${formatTokens(a.lastTurn.tokens)} tokens`}</Text>}
         {a.stop !== null && <Text color={a.stop === 'aborted' ? 'warning' : 'error'}>{STOP_TEXT[a.stop]}</Text>}
-      </Box>
-    ) : null
-
-  const agents =
-    a.agents.running > 0 ? (
-      <Box flexDirection="column">
-        <Box gap={2}>
-          <Text bold>サブエージェント</Text>
-          <Text>{String(a.agents.running)}</Text>
-          <Button key="band-agents" plain label={a.agents.open ? '▴ 閉じる' : '▾ 開く'} onPress={() => a.on.toggleAgents()}>
-            <Text dimColor>{a.agents.open ? '▴ 閉じる' : '▾ 開く'}</Text>
-          </Button>
-        </Box>
-        {a.agents.open &&
-          a.agents.rows.map(row => (
-            <Box key={`agent-${row.id}`} gap={2} flexWrap="wrap">
-              <Text color={AGENT_MARK[row.state].color}>{AGENT_MARK[row.state].mark}</Text>
-              <Text>{clean(row.type)}</Text>
-              <Text>{AGENT_MARK[row.state].word}</Text>
-              <Text>{clean(row.description)}</Text>
-              {row.state !== 'done' && row.elapsedMs !== null && <Text dimColor>{formatDuration(row.elapsedMs)}</Text>}
-            </Box>
-          ))}
       </Box>
     ) : null
 
@@ -260,7 +230,7 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const width = Math.max(8, (a.columns ?? RULE_WIDTH + 2) - 2)
   const thin = <Text color={LINE_COLOR}>{'─'.repeat(width)}</Text>
   const double = <Text color={LINE_COLOR}>{'═'.repeat(width)}</Text>
-  const top = a.goal !== null || runLine !== null || agents !== null
+  const top = a.goal !== null || runLine !== null
   const foot = limits !== null || git !== null
   const sections: [string, boolean, any][] = [
     [
@@ -274,7 +244,6 @@ export function renderBand(ui: Ui, a: BandArgs) {
           </Box>
         )}
         {runLine}
-        {agents}
       </Box>,
     ],
     ['context', contextBlock !== null, contextBlock],

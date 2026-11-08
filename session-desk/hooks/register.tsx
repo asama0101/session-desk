@@ -1,8 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 import type { Tab } from '../types'
-import { addTool, BRANCH_COLOR, ICONS, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
-import type { AgentRow } from './band'
+import { addTool, BRANCH_COLOR, ICONS, forkPrompt, limitRows, parseForkReply, removeTool, startTurn, toolLabel } from './band'
 import { renderBand } from './band-view'
 import type { Next } from './branch'
 import { renderBranchTab } from './branch-view'
@@ -67,10 +66,6 @@ const usageView = atom(
     // 「正確に数える」の内訳を出しているか。真のあいだは、概算の取得で breakdown を上書きしない。次の turn.start で戻す。
     exactHeld: false,
   },
-)
-const agentsView = atom(
-  { plugin: 'session-desk', key: 'agentsView' } as const,
-  { running: 0, rows: [] as AgentRow[], open: false, startedAt: {} as Record<string, number> },
 )
 const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
@@ -246,20 +241,12 @@ async function readBandData($: any, exact: boolean) {
     // ディレクトリは出さない。
   }
   const effort = await cachedEffort($, cwd)
-  let list: { id: string; type: string; description: string; status: string }[] | null = null
-  try {
-    const got = await $.agent.list()
-    list = Array.isArray(got) ? got : null
-  } catch {
-    // セッションに結び付いていないときは、一覧を出さない。
-  }
-
-  return { fullOk, usage, model, cwd, effort, list }
+  return { fullOk, usage, model, cwd, effort }
 }
 
 // readBandData の結果を atom に書く。
 async function writeBandData($: any, got: Awaited<ReturnType<typeof readBandData>>) {
-  const { fullOk, usage, model, cwd, effort, list } = got
+  const { fullOk, usage, model, cwd, effort } = got
   const ctx = usage?.context
   const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
   const b = ctx?.breakdown
@@ -286,17 +273,9 @@ async function writeBandData($: any, got: Awaited<ReturnType<typeof readBandData
             skills: (b.skills?.skillFrontmatter ?? []).map((k: any) => ({ name: String(k.name), tokens: Number(k.tokens) || 0 })),
           },
   }))
-
-  // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
-  await update($, agentsView, cur => {
-    const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
-    const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
-
-    return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
-  })
 }
 
-// モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。例外は投げない。
+// モデル・コンテキスト・上限を読んで atom に書く。例外は投げない。
 // exact が真のときだけ内訳を正確に数える。正確に数えるのが失敗したときだけ偽を返す。
 async function fetchBandData($: any, exact: boolean): Promise<boolean> {
   let fullOk = exact
@@ -377,11 +356,6 @@ async function toggleDetail($: any, id: string) {
 
 async function toggleLegend($: any) {
   await update($, bandUi, v => ({ ...v, legendHidden: !v.legendHidden }))
-}
-
-// サブエージェントの一覧を手で開閉する。閉じたときは、次に 0 件から増えるまで閉じたままにする。
-async function toggleAgents($: any) {
-  await update($, agentsView, v => ({ ...v, open: !v.open }))
 }
 
 // 「今はしない」。リリースの状態の目印を覚えて（再起動のあとも残す）、段階を読み直す。
@@ -605,21 +579,6 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('agent.spawn', async ($, e, next) => {
-    const out = await next(e)
-    const agentId = (out as { agentId?: string }).agentId
-    if (agentId !== undefined) {
-      try {
-        await update($, agentsView, v => ({ ...v, startedAt: { ...v.startedAt, [agentId]: Date.now() } }))
-      } catch {
-        // 開始時刻を残せなくても、経過時間が出ないだけ。
-      }
-    }
-    refetch($)
-
-    return out
-  })
-
   on('turn.complete', async ($, e, next) => {
     // 依頼のターンが終わったら、同じ状態でも「次へ進む」をもう一度押せる。サブエージェントと自分の fork の完了では、消さない。
     if (e.agentId === undefined && forkGuard.id === null) {
@@ -732,7 +691,6 @@ export const register: Register = on => {
     const current = await read($, tab)
     const b = await read($, band)
     const u = await read($, usageView)
-    const ag = await read($, agentsView)
 
     const opened = await read($, more)
     const toggleMore = (id: Tab) => void update($, more, v => ({ ...v, [id]: !v[id] })).catch(() => {})
@@ -786,7 +744,6 @@ export const register: Register = on => {
           run: { state: b.state, tool: toolLabel(b.run), elapsedMs: b.state === 'running' && b.run.startedAt !== null ? Date.now() - b.run.startedAt : null },
           lastTurn: b.lastTurn,
           stop: b.stop,
-          agents: { running: ag.running, rows: ag.rows, open: ag.open },
           model: u.model,
           effort: u.effort,
           cwd: u.cwd,
@@ -796,7 +753,7 @@ export const register: Register = on => {
           git: await read($, bandGit),
           // 実行中は選択肢を描かない。
           steps: b.state === 'running' || b.steps.length === 0 ? null : { items: b.steps, reason: b.reason, recommended: b.recommended },
-          on: { toggleAgents: () => void toggleAgents($), exact: () => void countExactly($), toggleLegend: () => void toggleLegend($).catch(() => {}), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
+          on: { exact: () => void countExactly($), toggleLegend: () => void toggleLegend($).catch(() => {}), toggleDetail: id => void toggleDetail($, id).catch(() => {}), pick: i => void pickStep($, i).catch(() => {}) },
           between: <Box flexDirection="column">
               <Box gap={3}>
                 {TABS.map(item =>

@@ -16,11 +16,9 @@ import {
   ICON_CELLS,
   fitTail,
   EFFORT_COLORS,
-  nextAgentsOpen,
   parseForkReply,
   removeTool,
   startTurn,
-  summarizeAgents,
   toolLabel,
   usageColor,
 } from './band'
@@ -205,27 +203,6 @@ test('RunState: toolLabel shows the oldest tool and the extra count', async () =
   s = removeTool(s, 1)
   expect(toolLabel(s)).toBe('Edit')
   expect(toolLabel(removeTool(s, 2))).toBe(null)
-})
-
-test('summarizeAgents: counts only running and pending', async () => {
-  const mk = (id: string, status: string) => ({ id, type: 't', description: 'd', status })
-  const r = summarizeAgents(
-    [mk('a', 'running'), mk('b', 'pending'), mk('c', 'waiting'), mk('d', 'idle'), mk('e', 'completed'), mk('f', 'failed'), mk('g', 'killed')],
-    new Map([['a', 1000], ['e', 2000]]),
-    4000,
-  )
-  expect(r.running).toBe(2)
-  expect(r.rows.map(x => x.state)).toEqual(['running', 'running', 'waiting', 'waiting', 'done', 'done', 'done'])
-  expect(r.rows[0]!.elapsedMs).toBe(3000)
-  expect(r.rows[1]!.elapsedMs).toBe(null)
-  // 完了した行は、開始時刻があっても経過時間を持たない。
-  expect(r.rows[4]!.elapsedMs).toBe(null)
-})
-
-test('nextAgentsOpen: opens on 0 to 1, respects a manual close, resets at 0', async () => {
-  expect(nextAgentsOpen({ running: 0, closedByUser: false }, 1)).toEqual({ open: true, closedByUser: false })
-  expect(nextAgentsOpen({ running: 1, closedByUser: true }, 2)).toEqual({ open: false, closedByUser: true })
-  expect(nextAgentsOpen({ running: 1, closedByUser: true }, 0).closedByUser).toBe(false)
 })
 
 test('stripControl: removes BOM, line/paragraph separators, soft hyphen and ALM', async () => {
