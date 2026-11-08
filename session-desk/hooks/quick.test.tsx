@@ -26,7 +26,7 @@ const PHRASES = [
 // エンジンの代わりの受け皿。送信された文言を submitted に、ストアの中身を saved に残す。
 function fakeEngine(on: any, entries?: Record<string, unknown>) {
   const submitted: string[] = []
-  const saved = new Map<string, unknown>(Object.entries(entries ?? {}))
+  const saved = new Map<string, unknown>(Object.entries({ quick: PHRASES, ...entries }))
   on('store.get', (_: any, e: any) => ({ value: saved.get(e.key) }))
   on('store.set', (_: any, e: any) => {
     saved.set(e.key, e.value)
@@ -55,8 +55,8 @@ const open = async ($: any) => {
   return ui
 }
 
-test('DEFAULT_QUICK is the three phrases', async () => {
-  expect([...DEFAULT_QUICK]).toEqual(PHRASES)
+test('DEFAULT_QUICK is empty', async () => {
+  expect([...DEFAULT_QUICK]).toEqual([])
 })
 
 test('parseQuick accepts only an array of non-empty strings', async () => {
@@ -225,22 +225,22 @@ test('saved phrases are loaded at session start; a bad stored value falls back t
   await ui.unmount()
 })
 
-test('a bad stored value falls back to the defaults', async ($, on) => {
+test('a bad stored value falls back to the defaults (no phrases)', async ($, on) => {
   fakeEngine(on, { quick: 'not-an-array' })
   await start($)
   const ui = await open($)
-  expect(await labels(ui)).toEqual(PHRASES)
+  expect(await labels(ui)).toEqual(['なし'])
   await ui.unmount()
 })
 
-test('session start still completes when the store cannot be read, and the defaults are used', async ($, on) => {
+test('session start still completes when the store cannot be read, and the defaults (no phrases) are used', async ($, on) => {
   // store.get の受け皿がないので、$.store.get は失敗する。
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const started = await start($)
   expect(started.cwd).toBe('D:/p')
   const ui = await open($)
-  expect(await labels(ui)).toEqual(PHRASES)
+  expect(await labels(ui)).toEqual(['なし'])
   await ui.unmount()
 })
 
@@ -331,7 +331,7 @@ test('the field ignores a blank and a phrase that is already there', async ($, o
   await ui.input({ key: 'quick-new-3', text: '   ' })
   await ui.input({ key: 'quick-new-3', text: PHRASES[0] ?? '' })
   expect(await labels(ui)).toEqual(PHRASES)
-  expect(saved.has('quick')).toBe(false)
+  expect(saved.get('quick')).toEqual(PHRASES)
   // 足せなかったときは入力欄を作り直さない（入力した文が残る）。
   expect(await ui.find({ key: 'quick-new-3' })).toBeDefined()
   await ui.unmount()
@@ -369,7 +369,7 @@ test('addSkip adds a key once and drops the oldest past 20', async () => {
 
 test('a phrase that cannot be sent shows a toast instead of failing silently', async ($, on) => {
   const toasts: string[] = []
-  on('store.get', () => ({ value: undefined }))
+  on('store.get', () => ({ value: PHRASES }))
   on('store.set', () => ({ value: undefined }))
   on('prompt.submit', () => {
     throw new Error('refused')
@@ -391,7 +391,7 @@ test('a phrase that cannot be sent shows a toast instead of failing silently', a
 
 test('a phrase that cannot be saved shows a toast; the screen still changes', async ($, on) => {
   const toasts: string[] = []
-  on('store.get', () => ({ value: undefined }))
+  on('store.get', () => ({ value: PHRASES }))
   on('store.set', () => {
     throw new Error('disk full')
   })
@@ -413,7 +413,7 @@ test('a phrase that cannot be saved shows a toast; the screen still changes', as
 
 test('adding a duplicate does not write the store again', async ($, on) => {
   let writes = 0
-  on('store.get', () => ({ value: undefined }))
+  on('store.get', () => ({ value: PHRASES }))
   on('store.set', () => {
     writes++
 
