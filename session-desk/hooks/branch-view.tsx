@@ -87,7 +87,7 @@ function prLinkOf(row: BranchRow | undefined): { text: string; href: string } | 
     return null
   }
 
-  return { text: stripControl(`PR #${pr.number}  ${tidyUrl(pr.url)}`), href: pr.url }
+  return { text: `PR #${pr.number}`, href: pr.url }
 }
 
 // テーマの色名。明るい端末でも暗い端末でも読める。

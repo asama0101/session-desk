@@ -326,12 +326,15 @@ test('nextOf: editing, push, PR (also after a closed PR) and delete each get a b
   expect(del?.prompt).toBe('マージ済みの作業ブランチ「feat/x」を削除してください')
 })
 
-test('nextOf: no button for other branches, the default branch, or when the turn belongs to the reviewer or to you (review, merge)', async () => {
+test('nextOf: no button for other branches or the default branch; the merge stage only offers 「マージ済みを伝える」', async () => {
   expect(nextOf(rowOf({ ...BARE, ahead: 2 }, false))).toBe(null)
   expect(nextOf(rowOf({ ...BARE, ahead: 2 }, true, 'default'))).toBe(null)
   expect(nextOf(rowOf(BARE))).toBe(null)
-  expect(nextOf(rowOf({ ...F0, pr: pr({}) }))).toBe(null)
-  expect(nextOf(rowOf({ ...F0, pr: pr({ reviewDecision: 'REVIEW_REQUIRED' }) }))).toBe(null)
+  for (const p of [pr({}), pr({ reviewDecision: 'REVIEW_REQUIRED' })]) {
+    const n = nextOf(rowOf({ ...F0, pr: p }))
+    expect(n?.label).toBe('▶ マージ済みを伝える')
+    expect(n?.prompt).toBe(`ブランチ「feat/x」の PR #${p.number} をマージしました。状態を確認して、次の段階へ進めてください`)
+  }
   expect(nextOf(rowOf({ ...F0, ahead: null }))).toBe(null)
   expect(nextOf(rowOf({ ...F0, dirty: null }))).toBe(null)
 })

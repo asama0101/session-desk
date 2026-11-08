@@ -697,7 +697,8 @@ test('merge: the stage row of a PR waiting to be merged carries a link to the PR
   expect(row.now).toEqual({ id: 6, text: 'マージ待ち' })
   const json = draw(row)
   expect(json).toContain('"href":"https://github.com/a/b/pull/19"')
-  expect(json).toContain('PR #19  github.com/a/b/pull/19')
+  expect(json).toContain('"children":["PR #19"]')
+  expect(json).toContain('▶ マージ済みを伝える')
   // レビューの段階はない。レビュー待ちや草稿でも、PR が開いていれば、マージの行に出す。
   expect(draw(prRow({ reviewDecision: 'REVIEW_REQUIRED' }))).toContain('/pull/19')
   expect(draw(prRow({ isDraft: true }))).toContain('/pull/19')
@@ -705,7 +706,7 @@ test('merge: the stage row of a PR waiting to be merged carries a link to the PR
   expect(draw(prRow({ url: undefined }))).not.toContain('/pull/')
   expect(draw(prRow({ url: 'javascript:alert(1)' }))).not.toContain('javascript')
   // Link が渡されないときは、文字で出す。
-  expect(draw(row, undefined as any)).toContain('PR #19  github.com/a/b/pull/19')
+  expect(draw(row, undefined as any)).toContain('PR #19')
 })
 
 test('release stage row: 「▶ リリースする」 and 「今はしない」 sit on the 今 row of a merged branch', async () => {
