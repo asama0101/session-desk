@@ -73,7 +73,7 @@ const agentsView = atom(
 )
 const bandUi = atom(
   { plugin: 'session-desk', key: 'bandUi' } as const,
-  { exact: false, detail: [] as string[], legendHidden: false },
+  { exact: false, detail: [] as string[], legendHidden: true },
 )
 
 // 概算の取得のまとめ。running: 取得中、again: 取得中に要求が来た（終わった直後に 1 回だけ取り直す）。session.start で戻す。
