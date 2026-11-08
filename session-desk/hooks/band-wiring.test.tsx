@@ -493,13 +493,20 @@ function withBreakdown(over: object = {}, categories?: any[]) {
   }
 }
 
-test('the breakdown rows and 概算 are always drawn, with no 内訳 button', async ($, on) => {
+// 凡例は、最初は隠れている。「▸ 凡例」を押して出す。
+async function showLegend(ui: any) {
+  await ui.press({ key: 'band-legend' })
+  await settle()
+}
+
+test('the breakdown rows and 概算 are drawn once the 凡例 is shown, with no 内訳 button', async ($, on) => {
   engine(on)
   fakeData(on, { usage: withBreakdown() })
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.complete(done())
   await settle()
+  await showLegend(ui)
   const t = await draw(ui)
   expect(await labels(ui)).not.toContain('▸ 内訳')
   expect(t).toContain('メッセージ')
@@ -529,6 +536,7 @@ test('rows are sorted by tokens, buffer and unknown names fold into その他, �
   await $.turn.complete(done())
   await settle()
   await settle()
+  await showLegend(ui)
   const t = await draw(ui)
   const names = ['メッセージ', 'MCP', 'その他', 'システム', '空き']
   const at = names.map(n => t.indexOf(n))
@@ -615,6 +623,7 @@ test('a failing full call shows a toast, keeps 概算, and later fetches are sum
   await $.turn.complete(done())
   await settle()
   await settle()
+  await showLegend(ui)
   calls.length = 0
   await ui.press({ key: 'band-exact' })
   await settle()
@@ -639,6 +648,7 @@ test('the ▸ of MCP, memory and skills rows shows each item, biggest first, and
   await $.turn.complete(done())
   await settle()
   await settle()
+  await showLegend(ui)
   let t = await draw(ui)
   expect(t).not.toContain('srv / big')
   expect((await labels(ui)).filter(x => x === '▸ 1 件ずつ').length).toBe(3)
@@ -662,7 +672,7 @@ test('the ▸ of MCP, memory and skills rows shows each item, biggest first, and
   await ui.unmount()
 })
 
-test('the 凡例 button hides the legend rows and shows them again', async ($, on) => {
+test('the 凡例 starts hidden; the button shows the legend rows and hides them again', async ($, on) => {
   engine(on)
   fakeData(on, { usage: withBreakdown({}, [cat('Messages', 'used', 5000), cat('MCP tools', 'used', 10000)]) })
   await start($)
@@ -670,15 +680,16 @@ test('the 凡例 button hides the legend rows and shows them again', async ($, o
   await $.turn.complete(done())
   await settle()
   await settle()
-  expect(await draw(ui)).toContain('メッセージ')
-  await ui.press({ key: 'band-legend' })
-  await settle()
   const hidden = await draw(ui)
   expect(hidden).not.toContain('メッセージ')
   expect(hidden).toContain('概算')
+  expect(await labels(ui)).toContain('凡例を出す')
+  await showLegend(ui)
+  expect(await draw(ui)).toContain('メッセージ')
+  expect(await labels(ui)).toContain('凡例を隠す')
   await ui.press({ key: 'band-legend' })
   await settle()
-  expect(await draw(ui)).toContain('メッセージ')
+  expect(await draw(ui)).not.toContain('メッセージ')
   await ui.unmount()
 })
 
@@ -764,6 +775,7 @@ async function openBreakdown($: any) {
   await $.turn.complete(done())
   await settle()
   await settle()
+  await showLegend(ui)
 
   return ui
 }
