@@ -1,6 +1,6 @@
 {
   "name": "session-desk",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "サイド UI パネル（定型文・履歴・Git）と、全タブ共通のセッション帯、入力欄の上のパネル開閉ボタンを出す mod。",
   "types": "./types/index.d.ts"
 }
