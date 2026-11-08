@@ -1,19 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 928 964" width="928" height="964" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15" style="white-space:pre">
+<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 928 920" width="928" height="920" role="img" aria-labelledby="t d" font-family="Consolas, 'Cascadia Mono', 'Noto Sans Mono CJK JP', 'MS Gothic', monospace" font-size="15" style="white-space:pre">
   <title id="t">セッション帯と提案（イメージ）</title>
-  <desc id="d">右のサイドパネルの上半分。上から順に、見出し、ディレクトリ、ゴール、停止中の状態、サブエージェント 1 件、線、コンテキスト（見出しの横に「▾ 凡例」ボタン、使用率 58%、色分けのバー、凡例を出した 7 行の一覧、自動 compact までの残り、「概算」「正確に数える」）、5 時間枠と 7 日枠とブランチ名、線、タブの行、二重線。二重線の下に「提案」と、番号つきの 3 つの選択肢が縦に並ぶ。勧める案には (推奨) が付く。</desc>
+  <desc id="d">右のサイドパネルの上半分。上から順に、見出し、ディレクトリ、ゴール、停止中の状態、線、コンテキスト（見出しの横に「▾ 凡例」ボタン、使用率 58%、色分けのバー、凡例を出した 7 行の一覧、自動 compact までの残り、「概算」「正確に数える」）、5 時間枠と 7 日枠とブランチ名、線、タブの行、二重線。二重線の下に「提案」と、番号つきの 3 つの選択肢が縦に並ぶ。勧める案には (推奨) が付く。</desc>
 
-  <rect x="0" y="0" width="928" height="964" rx="10" fill="#1e1e1e"/>
-  <rect x="0.5" y="0.5" width="927" height="963" rx="10" fill="none" stroke="#3c3c3c"/>
-  <rect x="384" y="0" width="1" height="964" fill="#3c3c3c"/>
+  <rect x="0" y="0" width="928" height="920" rx="10" fill="#1e1e1e"/>
+  <rect x="0.5" y="0.5" width="927" height="919" rx="10" fill="none" stroke="#3c3c3c"/>
+  <rect x="384" y="0" width="1" height="920" fill="#3c3c3c"/>
   <text x="20" y="58" fill="#858585">&gt; 方針を決めて</text>
   <text x="20" y="102" fill="#d4d4d4">●</text>
   <text x="38" y="102" fill="#d4d4d4">案が 2 つあります。</text>
   <text x="38" y="124" fill="#858585">A: 既存の関数を直す</text>
   <text x="38" y="146" fill="#858585">B: 新しく作る</text>
-  <rect x="20.5" y="840.5" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
-  <text x="34" y="860" fill="#b1b9f9">サイドパネルの開閉</text>
-  <rect x="20.5" y="882.5" width="343" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
-  <text x="36" y="906" fill="#858585">&gt;</text>
+  <rect x="20.5" y="796.5" width="196" height="30" rx="4" fill="none" stroke="#b1b9f9"/>
+  <text x="34" y="816" fill="#b1b9f9">サイドパネルの開閉</text>
+  <rect x="20.5" y="838.5" width="343" height="62" rx="6" fill="none" stroke="#5a5a5a"/>
+  <text x="36" y="862" fill="#858585">&gt;</text>
   <text x="404" y="36" fill="#d4d4d4" font-weight="bold">Session</text>
   <text x="485" y="36" fill="#d4d4d4">🤖</text>
   <text x="512" y="36" fill="#d78bff" font-weight="bold">Opus 5.5</text>
@@ -25,84 +25,76 @@
   <text x="404" y="102" fill="#858585">💤 停止中</text>
   <text x="503" y="102" fill="#d4d4d4">直近 1m42s</text>
   <text x="611" y="102" fill="#d4d4d4">18k tokens</text>
-  <text x="404" y="124" fill="#d4d4d4" font-weight="bold">サブエージェント</text>
-  <text x="566" y="124" fill="#d4d4d4">1</text>
-  <text x="593" y="124" fill="#858585">▴ 閉じる</text>
-  <text x="422" y="146" fill="#7db4ff">●</text>
-  <text x="449" y="146" fill="#d4d4d4">Explore</text>
-  <text x="521" y="146" fill="#d4d4d4">実行中</text>
-  <text x="584" y="146" fill="#d4d4d4">調査</text>
-  <text x="629" y="146" fill="#858585">0m42s</text>
-  <rect x="404" y="185" width="504" height="1" fill="#464a54"/>
-  <text x="404" y="234" fill="#858585">📊 コンテキスト</text>
-  <text x="557" y="234" fill="#858585">▾ 凡例</text>
-  <text x="764" y="234" fill="#6fcf97" font-weight="bold">58%</text>
-  <text x="809" y="234" fill="#6fcf97">116k / 200k</text>
-  <rect x="404" y="242" width="486" height="18" fill="#3a3d44"/>
-  <rect x="404" y="242" width="145.8" height="18" fill="#61afef"/>
-  <rect x="549.8" y="242" width="29.2" height="18" fill="#c678dd"/>
-  <rect x="579.0" y="242" width="24.3" height="18" fill="#56b6c2"/>
-  <rect x="603.3" y="242" width="19.4" height="18" fill="#7ec699"/>
-  <rect x="622.7" y="242" width="9.7" height="18" fill="#e5c07b"/>
-  <rect x="632.4" y="242" width="7.3" height="18" fill="#d19a66"/>
-  <rect x="639.7" y="242" width="46.2" height="18" fill="#9aa0ab"/>
-  <text x="404" y="300" fill="#61afef">■</text>
-  <text x="422" y="300" fill="#d4d4d4">メッセージ</text>
-  <text x="521" y="300" fill="#d4d4d4">60k</text>
-  <text x="404" y="322" fill="#c678dd">■</text>
-  <text x="422" y="322" fill="#d4d4d4">MCP</text>
-  <text x="458" y="322" fill="#d4d4d4">12k</text>
-  <text x="494" y="322" fill="#858585">▸ 1 件ずつ</text>
-  <text x="404" y="344" fill="#56b6c2">■</text>
-  <text x="422" y="344" fill="#d4d4d4">ツール</text>
-  <text x="485" y="344" fill="#d4d4d4">10k</text>
-  <text x="404" y="366" fill="#7ec699">■</text>
-  <text x="422" y="366" fill="#d4d4d4">システム</text>
-  <text x="503" y="366" fill="#d4d4d4">8k</text>
-  <text x="404" y="388" fill="#e5c07b">■</text>
-  <text x="422" y="388" fill="#d4d4d4">メモリ</text>
-  <text x="485" y="388" fill="#d4d4d4">4k</text>
-  <text x="512" y="388" fill="#858585">▸ 1 件ずつ</text>
-  <text x="404" y="410" fill="#d19a66">■</text>
-  <text x="422" y="410" fill="#d4d4d4">スキル</text>
-  <text x="485" y="410" fill="#d4d4d4">3k</text>
-  <text x="512" y="410" fill="#858585">▸ 1 件ずつ</text>
-  <text x="404" y="432" fill="#9aa0ab">■</text>
-  <text x="422" y="432" fill="#d4d4d4">その他</text>
-  <text x="485" y="432" fill="#d4d4d4">19k</text>
-  <text x="404" y="476" fill="#858585">自動 compact まで あと 40k（閾値 137k）</text>
-  <text x="404" y="498" fill="#858585">概算</text>
-  <text x="458" y="498" fill="#b1b9f9">正確に数える</text>
-  <text x="404" y="542" fill="#858585">⏳ 5時間枠</text>
-  <rect x="503" y="532" width="108" height="10" fill="#3a3d44"/>
-  <rect x="503" y="532" width="34.6" height="10" fill="#6fcf97"/>
-  <text x="620" y="542" fill="#6fcf97">32%</text>
-  <text x="674" y="542" fill="#858585">残り 3h 10m</text>
-  <text x="404" y="564" fill="#858585">📅 7日枠</text>
-  <rect x="485" y="554" width="108" height="10" fill="#3a3d44"/>
-  <rect x="485" y="554" width="11.9" height="10" fill="#6fcf97"/>
-  <text x="602" y="564" fill="#6fcf97">11%</text>
-  <text x="404" y="586" fill="#4fd6e0">🌿 feat/band-frame</text>
-  <text x="584" y="586" fill="#d4d4d4">未 commit 3</text>
-  <rect x="404" y="625" width="504" height="1" fill="#464a54"/>
-  <text x="404" y="674" fill="#4fd6e0" font-weight="bold">💬 定型文</text>
-  <rect x="404" y="678" width="81" height="1" fill="#4fd6e0"/>
-  <text x="512" y="674" fill="#858585">🕘 履歴</text>
-  <text x="602" y="674" fill="#858585">🔀 Git</text>
-  <text x="404" y="718" fill="#d4d4d4">残りのタスクは？</text>
-  <text x="404" y="740" fill="#b1b9f9">▶ 送信</text>
-  <text x="476" y="740" fill="#ff6b80">× 削除</text>
-  <text x="548" y="740" fill="#555a65">▲ 上へ</text>
-  <text x="620" y="740" fill="#858585">▼ 下へ</text>
-  <rect x="404" y="777" width="504" height="1" fill="#6b7080"/>
-  <rect x="404" y="781" width="504" height="1" fill="#6b7080"/>
-  <text x="404" y="828" fill="#d4d4d4" font-weight="bold">💡 提案</text>
-  <text x="485" y="828" fill="#858585">実装方針の確認待ち</text>
-  <text x="404" y="850" fill="#858585">1</text>
-  <text x="431" y="850" fill="#d4d4d4" font-weight="bold">A案で進める</text>
-  <text x="539" y="850" fill="#6fcf97" font-weight="bold">(推奨)</text>
-  <text x="404" y="872" fill="#858585">2</text>
-  <text x="431" y="872" fill="#d4d4d4">B案で進める</text>
-  <text x="404" y="894" fill="#858585">3</text>
-  <text x="431" y="894" fill="#d4d4d4">別の案を相談</text>
+  <rect x="404" y="141" width="504" height="1" fill="#464a54"/>
+  <text x="404" y="190" fill="#858585">📊 コンテキスト</text>
+  <text x="557" y="190" fill="#858585">▾ 凡例</text>
+  <text x="764" y="190" fill="#6fcf97" font-weight="bold">58%</text>
+  <text x="809" y="190" fill="#6fcf97">116k / 200k</text>
+  <rect x="404" y="198" width="486" height="18" fill="#3a3d44"/>
+  <rect x="404" y="198" width="145.8" height="18" fill="#61afef"/>
+  <rect x="549.8" y="198" width="29.2" height="18" fill="#c678dd"/>
+  <rect x="579.0" y="198" width="24.3" height="18" fill="#56b6c2"/>
+  <rect x="603.3" y="198" width="19.4" height="18" fill="#7ec699"/>
+  <rect x="622.7" y="198" width="9.7" height="18" fill="#e5c07b"/>
+  <rect x="632.4" y="198" width="7.3" height="18" fill="#d19a66"/>
+  <rect x="639.7" y="198" width="46.2" height="18" fill="#9aa0ab"/>
+  <text x="404" y="256" fill="#61afef">■</text>
+  <text x="422" y="256" fill="#d4d4d4">メッセージ</text>
+  <text x="521" y="256" fill="#d4d4d4">60k</text>
+  <text x="404" y="278" fill="#c678dd">■</text>
+  <text x="422" y="278" fill="#d4d4d4">MCP</text>
+  <text x="458" y="278" fill="#d4d4d4">12k</text>
+  <text x="494" y="278" fill="#858585">▸ 1 件ずつ</text>
+  <text x="404" y="300" fill="#56b6c2">■</text>
+  <text x="422" y="300" fill="#d4d4d4">ツール</text>
+  <text x="485" y="300" fill="#d4d4d4">10k</text>
+  <text x="404" y="322" fill="#7ec699">■</text>
+  <text x="422" y="322" fill="#d4d4d4">システム</text>
+  <text x="503" y="322" fill="#d4d4d4">8k</text>
+  <text x="404" y="344" fill="#e5c07b">■</text>
+  <text x="422" y="344" fill="#d4d4d4">メモリ</text>
+  <text x="485" y="344" fill="#d4d4d4">4k</text>
+  <text x="512" y="344" fill="#858585">▸ 1 件ずつ</text>
+  <text x="404" y="366" fill="#d19a66">■</text>
+  <text x="422" y="366" fill="#d4d4d4">スキル</text>
+  <text x="485" y="366" fill="#d4d4d4">3k</text>
+  <text x="512" y="366" fill="#858585">▸ 1 件ずつ</text>
+  <text x="404" y="388" fill="#9aa0ab">■</text>
+  <text x="422" y="388" fill="#d4d4d4">その他</text>
+  <text x="485" y="388" fill="#d4d4d4">19k</text>
+  <text x="404" y="432" fill="#858585">自動 compact まで あと 40k（閾値 137k）</text>
+  <text x="404" y="454" fill="#858585">概算</text>
+  <text x="458" y="454" fill="#b1b9f9">正確に数える</text>
+  <text x="404" y="498" fill="#858585">⏳ 5時間枠</text>
+  <rect x="503" y="488" width="108" height="10" fill="#3a3d44"/>
+  <rect x="503" y="488" width="34.6" height="10" fill="#6fcf97"/>
+  <text x="620" y="498" fill="#6fcf97">32%</text>
+  <text x="674" y="498" fill="#858585">残り 3h 10m</text>
+  <text x="404" y="520" fill="#858585">📅 7日枠</text>
+  <rect x="485" y="510" width="108" height="10" fill="#3a3d44"/>
+  <rect x="485" y="510" width="11.9" height="10" fill="#6fcf97"/>
+  <text x="602" y="520" fill="#6fcf97">11%</text>
+  <text x="404" y="542" fill="#4fd6e0">🌿 feat/band-frame</text>
+  <text x="584" y="542" fill="#d4d4d4">未 commit 3</text>
+  <rect x="404" y="581" width="504" height="1" fill="#464a54"/>
+  <text x="404" y="630" fill="#4fd6e0" font-weight="bold">💬 定型文</text>
+  <rect x="404" y="634" width="81" height="1" fill="#4fd6e0"/>
+  <text x="512" y="630" fill="#858585">🕘 履歴</text>
+  <text x="602" y="630" fill="#858585">🔀 Git</text>
+  <text x="404" y="674" fill="#d4d4d4">残りのタスクは？</text>
+  <text x="404" y="696" fill="#b1b9f9">▶ 送信</text>
+  <text x="476" y="696" fill="#ff6b80">× 削除</text>
+  <text x="548" y="696" fill="#555a65">▲ 上へ</text>
+  <text x="620" y="696" fill="#858585">▼ 下へ</text>
+  <rect x="404" y="733" width="504" height="1" fill="#6b7080"/>
+  <rect x="404" y="737" width="504" height="1" fill="#6b7080"/>
+  <text x="404" y="784" fill="#d4d4d4" font-weight="bold">💡 提案</text>
+  <text x="485" y="784" fill="#858585">実装方針の確認待ち</text>
+  <text x="404" y="806" fill="#858585">1</text>
+  <text x="431" y="806" fill="#d4d4d4" font-weight="bold">A案で進める</text>
+  <text x="539" y="806" fill="#6fcf97" font-weight="bold">(推奨)</text>
+  <text x="404" y="828" fill="#858585">2</text>
+  <text x="431" y="828" fill="#d4d4d4">B案で進める</text>
+  <text x="404" y="850" fill="#858585">3</text>
+  <text x="431" y="850" fill="#d4d4d4">別の案を相談</text>
 </svg>

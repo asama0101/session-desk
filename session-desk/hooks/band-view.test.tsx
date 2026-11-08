@@ -14,7 +14,6 @@ const BASE: BandArgs = {
   run: { state: null, tool: null, elapsedMs: null },
   lastTurn: null,
   stop: null,
-  agents: { running: 0, rows: [], open: false },
   model: null,
   effort: null,
   cwd: null,
@@ -24,7 +23,6 @@ const BASE: BandArgs = {
   git: null,
   steps: null,
   on: {
-    toggleAgents() {},
     exact() {},
     toggleLegend() {},
     toggleDetail() {},
@@ -75,35 +73,6 @@ test('stopped shows the last turn; stop reasons', async () => {
   expect(texts({ run, stop: 'error' })).toContain('エラーで停止')
   expect(texts({ run, stop: 'refusal' })).toContain('拒否で停止')
   expect(texts({ run, stop: 'aborted' })).toContain('中断')
-})
-
-const ROWS = [
-  { id: 'a', type: 'Explore', description: '調査', state: 'running' as const, elapsedMs: 5000 },
-  { id: 'b', type: 'Plan', description: '設計', state: 'waiting' as const, elapsedMs: null },
-]
-
-test('agents: none shows nothing; open lists rows with colored marks; closed hides them', async () => {
-  expect(texts().join('')).not.toContain('サブエージェント')
-  const open = draw({ agents: { running: 2, rows: ROWS, open: true } })
-  const t = textsOf(open)
-  expect(t.join('|')).toContain('サブエージェント')
-  expect(t).toContain('2')
-  for (const w of ['Explore', '調査', 'Plan', '設計']) expect(t).toContain(w)
-  expect(t).toContain('実行中')
-  expect(t).toContain('待機')
-  expect(colorOf(open, '●')).toBe('blue')
-  expect(colorOf(open, '◌')).toBe('gray')
-  // 完了は灰色の ○。経過時間は出さない（値が渡っても描かない）。
-  const done = draw({ agents: { running: 1, rows: [ROWS[0]!, { ...ROWS[0]!, id: 'c', state: 'done', elapsedMs: 9000 }], open: true } })
-  expect(textsOf(done)).toContain('完了')
-  expect(colorOf(done, '○')).toBe('gray')
-  expect(textsOf(done)).toContain('0m05s')
-  expect(textsOf(done)).not.toContain('0m09s')
-  expect(textsOf(open)).not.toContain('○')
-  expect(labelsOf(open)).toContain('▴ 閉じる')
-  const closed = draw({ agents: { running: 2, rows: ROWS, open: false } })
-  expect(textsOf(closed)).not.toContain('Explore')
-  expect(labelsOf(closed)).toContain('▾ 開く')
 })
 
 test('model, context percent colors and tokens; null context omits the line', async () => {
@@ -372,14 +341,13 @@ test('ESC sequences and bidi marks are stripped from every drawn string', async 
     goal: bad('goal'),
     model: bad('model'),
     git: { branch: bad('branch'), dirtyCount: 1 },
-    agents: { running: 1, rows: [{ ...ROWS[0], type: bad('atype'), description: bad('adesc') }], open: true },
     breakdown: {
       ...BREAKDOWN(),
       rows: [{ id: 'mcp' as const, name: bad('rowname'), tokens: 1000, detail: [{ name: bad('detailname'), tokens: 500 }], detailOpen: true }],
     },
   }
   check(draw({ ...base, steps: { items: [bad('s0'), bad('s1')], reason: bad('reason'), recommended: 0 } } as any), [
-    'goal', 'model', 'branch', 'atype', 'adesc', 'rowname', 'detailname', 'reason', 's0', 's1',
+    'goal', 'model', 'branch', 'rowname', 'detailname', 'reason', 's0', 's1',
   ])
 })
 

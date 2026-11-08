@@ -189,10 +189,10 @@ test('the tab row sits below the band and above the tab body', async ($, on) => 
 const ZERO_USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'm' }
 const cat = (name: string, kind: string, tokens: number) => ({ name, kind, tokens, color: 'x', isDeferred: kind === 'deferred' })
 
-// usage / model / agent.list の差し替え。calls に usage の引数を残す。
-function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boolean; throwList?: boolean } = {}) {
+// usage / model の差し替え。calls に usage の引数を残す。
+function fakeData(on: any, opts: { usage?: any; throwUsage?: boolean } = {}) {
   // usageGate: 立っている間、usage の返答を待たせる（呼ばれた記録は先に残す）。
-  const state = { calls: [] as any[], list: opts.list ?? [], gate: null as null | Promise<void>, usageGate: null as null | Promise<void> }
+  const state = { calls: [] as any[], usageGate: null as null | Promise<void> }
   on('session.usage', async (_: any, e: any) => {
     state.calls.push(e)
     await state.usageGate
@@ -203,13 +203,6 @@ function fakeData(on: any, opts: { usage?: any; list?: any[]; throwUsage?: boole
     return { value: opts.usage ?? { startedAt: 0, context: { window: 200000, tokens: 116000, percent: 58 }, rateLimits: [] } }
   })
   on('session.model', () => ({ value: 'claude-test-model' }))
-  on('agent.list', async () => {
-    await state.gate
-    if (opts.throwList) throw new Error('no session is bound')
-
-    return { value: state.list }
-  })
-  on('agent.spawn', () => ({ model: 'm', agentId: 'a1' }))
 
   return state
 }
@@ -221,8 +214,6 @@ function colorsOf(tree: any, out: { text: string; color?: string }[] = []) {
 
   return out
 }
-
-const agent = (status: string) => ({ id: 'a1', type: 'Explore', description: 'look around', status })
 
 test('turn.complete brings the context percent and the model to the pane, no timer needed', async ($, on) => {
   engine(on)
@@ -351,52 +342,6 @@ test('the context bar is split by the breakdown categories colours', async ($, o
   await ui.unmount()
 })
 
-test('a spawned running agent opens the list; closing keeps it closed on the next fetch; 0 agents shows nothing', async ($, on) => {
-  engine(on)
-  const data = fakeData(on)
-  await start($)
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await $.turn.complete(done())
-  await settle()
-  expect(await draw(ui)).not.toContain('サブエージェント')
-  data.list = [agent('running')]
-  await $.agent.spawn({ prompt: 'p' } as any)
-  await $.turn.start({ text: 'hi', turnId: 't2' })
-  await settle()
-  let t = await draw(ui)
-  expect(t).toContain('サブエージェント')
-  expect(t).toContain('Explore')
-  expect(t).toContain('look around')
-  await ui.press({ key: 'band-agents' })
-  await settle()
-  t = await draw(ui)
-  expect(t).toContain('サブエージェント')
-  expect(t).not.toContain('look around')
-  await $.turn.complete(done({ turnId: 't2' }))
-  await settle()
-  expect(await draw(ui)).not.toContain('look around')
-  data.list = []
-  await $.turn.complete(done({ turnId: 't2' }))
-  await settle()
-  t = await draw(ui)
-  expect(t).not.toContain('サブエージェント')
-  expect(t).not.toContain('Explore')
-  await ui.unmount()
-})
-
-test('agent.list throwing hides the agents and nothing else breaks', async ($, on) => {
-  engine(on)
-  fakeData(on, { throwList: true })
-  await start($)
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await $.turn.complete(done())
-  await settle()
-  const t = await draw(ui)
-  expect(t).not.toContain('サブエージェント')
-  expect(t).toContain('58%')
-  await ui.unmount()
-})
-
 test('tokens absent: the percent shows but no tokens text; window absent: no 0 / 0', async ($, on) => {
   engine(on)
   const data = fakeData(on, { usage: { startedAt: 0, context: { window: 200000, percent: 58 }, rateLimits: [] } })
@@ -432,30 +377,6 @@ test('tokens and window both present show as before', async ($, on) => {
   await $.turn.complete(done())
   await settle()
   expect(await draw(ui)).toContain('860k / 1M')
-  await ui.unmount()
-})
-
-test('a manual close wins against a fetch that was already in flight', async ($, on) => {
-  engine(on)
-  const data = fakeData(on, { list: [agent('running')] })
-  await start($)
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  await $.turn.complete(done())
-  await settle()
-  expect(await draw(ui)).toContain('look around')
-  let release = () => {}
-  data.gate = new Promise<void>(resolve => (release = resolve))
-  await $.turn.start({ text: 'hi', turnId: 't2' })
-  await settle()
-  await ui.press({ key: 'band-agents' })
-  await settle()
-  expect(await draw(ui)).not.toContain('look around')
-  data.gate = null
-  release()
-  await settle()
-  const t = await draw(ui)
-  expect(t).toContain('サブエージェント')
-  expect(t).not.toContain('look around')
   await ui.unmount()
 })
 
@@ -717,7 +638,6 @@ test('many events while a fetch runs make at most one more fetch', async ($, on)
   data.usageGate = new Promise<void>(resolve => (release = resolve))
   await $.turn.start({ text: 'hi', turnId: 't1' })
   for (let i = 0; i < 5; i++) await $.tool.call({ tool: 'Grep', pattern: String(i) })
-  await $.agent.spawn({ prompt: 'p' } as any)
   await settle()
   expect(data.calls.length).toBe(1)
   data.usageGate = null
@@ -738,7 +658,6 @@ test('an older slow fetch cannot overwrite a newer one', async ($, on) => {
     return { value: { startedAt: 0, context: { window: 200000, percent: mine === 1 ? 11 : 22 }, rateLimits: [] } }
   })
   on('session.model', () => ({ value: 'm' }))
-  on('agent.list', () => ({ value: [] }))
   await start($)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   await $.turn.start({ text: 'hi', turnId: 't1' })

@@ -38,12 +38,6 @@ declare module 'claude-code' {
         } | null
         exactHeld: boolean
       }
-      agentsView: {
-        running: number
-        rows: { id: string; type: string; description: string; state: 'running' | 'waiting' | 'done'; elapsedMs: number | null }[]
-        open: boolean
-        startedAt: Record<string, number>
-      }
       bandUi: { exact: boolean; detail: string[] }
       more: { quick: boolean; history: boolean; git: boolean }
       releaseSkip: string[]
