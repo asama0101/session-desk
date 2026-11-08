@@ -330,7 +330,7 @@ export function parseRemotes(stdout: string): Remote[] {
 }
 
 // 「次へ進む」ボタン。いまチェックアウトしているブランチの「今」が commit・push・PR・削除のとき、その段階の行に出す。
-// 押すと、prompt を Claude に送る（確認は挟まない）。マージとレビューは人の番なので、ボタンはない。
+// 押すと、prompt を Claude に送る（確認は挟まない）。マージとレビューは人の番なので、マージの段階のボタンは「マージしたと伝える」だけ。
 export type Next = {
   // 同じ状態では同じ値。状態が進む（段階か commit 数が変わる）と変わる。二度押しを止める目印。
   key: string
@@ -362,6 +362,11 @@ export function nextOf(row: BranchRow, base: string | null = null): Next | null 
       return row.facts.pushed === null
         ? null
         : { key, label: '▶ PR を作る', prompt: `ブランチ「${row.name}」の PR を${base === null ? '既定ブランチ' : ` ${base} `}向けに作ってください` }
+    case 6:
+      // レビューもマージも人の番。マージしたあとに、Claude へ伝えるボタンだけ出す（gh の反映を待たずに次へ進められる）。
+      return row.facts.pr?.state === 'OPEN'
+        ? { key, label: '▶ マージ済みを伝える', prompt: `ブランチ「${row.name}」の PR #${row.facts.pr.number} をマージしました。状態を確認して、次の段階へ進めてください` }
+        : null
     case 7:
       return { key, label: '▶ リリースする', prompt: `ブランチ「${row.name}」のマージ済みの変更をリリースしてください（version を上げる PR、タグ、Release の順）` }
     case 8:
