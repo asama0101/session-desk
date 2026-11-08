@@ -156,21 +156,28 @@ export function formatRemaining(resetsAtIso: string, nowMs: number): string | nu
 
 // 使用分の長さは round(percent / 100 × width)。その中を parts の比率で分け、残りは free。
 // 0 より大きい項目は最小 1 マス。過不足は最大の項目で合わせる。
+// 項目が使用分のマスより多いときは、トークンの多い項目から used 個だけを塗る（使用率より長く塗らない）。
 export function barCells(
   parts: { id: CategoryId; tokens: number }[],
   percent: number,
   width: number,
 ): { id: CategoryId; cells: number }[] {
   const used = Math.min(width, Math.max(0, Math.round((percent / 100) * width)))
-  const total = parts.reduce((a, p) => a + p.tokens, 0)
+  const positive = parts.filter(p => p.tokens > 0 && Number.isFinite(p.tokens))
+  const largest = new Set([...positive].sort((a, b) => b.tokens - a.tokens).slice(0, used))
+  const shown = positive.filter(p => largest.has(p))
+  const total = shown.reduce((a, p) => a + p.tokens, 0)
   const out: { id: CategoryId; cells: number }[] = []
   if (used > 0 && total > 0) {
-    for (const p of parts) {
-      if (p.tokens > 0) out.push({ id: p.id, cells: Math.max(1, Math.round((p.tokens / total) * used)) })
+    for (const p of shown) {
+      out.push({ id: p.id, cells: Math.max(1, Math.round((p.tokens / total) * used)) })
     }
-    const sum = out.reduce((a, c) => a + c.cells, 0)
-    const biggest = out.reduce((a, c) => (c.cells > a.cells ? c : a))
-    biggest.cells = Math.max(1, biggest.cells + used - sum)
+    // 丸めの過不足は、1 マスずつ最大の項目で合わせる（減らすときは 2 マス以上の項目から）。
+    const biggest = (cells: typeof out) => cells.reduce((a, c) => (c.cells > a.cells ? c : a))
+    let diff = used - out.reduce((a, c) => a + c.cells, 0)
+    for (; diff !== 0; diff += diff > 0 ? -1 : 1) {
+      biggest(diff > 0 ? out : out.filter(c => c.cells > 1)).cells += diff > 0 ? 1 : -1
+    }
   }
   const usedCells = out.reduce((a, c) => a + c.cells, 0)
   if (width - usedCells > 0) out.push({ id: 'free', cells: width - usedCells })

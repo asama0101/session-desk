@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyDetail, collect, collectLight, detailOf, enrich, pickBudget, replaceIfSame, requeryPr } from './git'
+import { applyDetail, collect, collectLight, detailOf, enrich, orderBranches, replaceIfSame, requeryPr } from './git'
 import type { Run, Snapshot } from './git'
 
 type Reply = { exitCode?: number; stdout?: string; stderr?: string; isStdoutTruncated?: boolean } | 'reject'
@@ -216,10 +216,10 @@ test('a branch name goes through stripControl', async () => {
   expect(snap.branches.map(b => b.name)).toContain('feat/x')
 })
 
-test('pickBudget orders current, selected, then the rest by name, and cuts at the limit', async () => {
-  expect(pickBudget(['a', 'b', 'c', 'd'], 'd', 'c', 3)).toEqual(['d', 'c', 'a'])
-  expect(pickBudget(['a', 'b'], null, null, 5)).toEqual(['a', 'b'])
-  expect(pickBudget(['a', 'b'], 'zz', 'yy', 5)).toEqual(['a', 'b'])
+test('orderBranches orders current, selected, then the rest by name', async () => {
+  expect(orderBranches(['a', 'b', 'c', 'd'], 'd', 'c')).toEqual(['d', 'c', 'a', 'b'])
+  expect(orderBranches(['a', 'b'], null, null)).toEqual(['a', 'b'])
+  expect(orderBranches(['a', 'b'], 'zz', 'yy')).toEqual(['a', 'b'])
 })
 
 test('detailOf reads created, first-commit and push dates; empty reflogs give null; no base gives no first commit', async () => {

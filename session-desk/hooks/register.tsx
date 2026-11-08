@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 import type { Tab } from '../types'
-import { addTool, BRANCH_COLOR, ICONS, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, OFF_COLOR, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
+import { addTool, BRANCH_COLOR, ICONS, forkPrompt, limitRows, nextAgentsOpen, parseForkReply, removeTool, startTurn, summarizeAgents, toolLabel } from './band'
 import type { AgentRow } from './band'
 import { renderBand } from './band-view'
 import type { Next } from './branch'
@@ -11,8 +11,9 @@ import { blockedByDialog } from './dialog'
 import { cachedEffort, forgetEffort } from './effort'
 import { collect, collectLight, enrich, replaceIfSame } from './git'
 import type { Run, Snapshot } from './git'
-import { DEFAULT_QUICK, addQuick, moveQuick, addSkip, parseQuick, parseSkips, preview, removeQuick, stripControl } from './lib'
-import { renderMore, shownCount } from './more'
+import { renderHistoryTab } from './history-view'
+import { DEFAULT_QUICK, addQuick, moveQuick, addSkip, parseQuick, parseSkips, removeQuick } from './lib'
+import { renderQuickTab } from './quick-view'
 import { around, createRefresher, ghDelayMs, wantsGh } from './refresh'
 
 const PANE = 'session-desk'
@@ -96,9 +97,36 @@ const TABS: readonly { id: Tab; label: string }[] = [
 ]
 
 // 定型文を変えたら、atom（画面）とストア（次のセッション）の両方に書く。`$` を受け取る関数は、トップレベルに置く。
-async function saveQuick($: any, next: string[]) {
-  await update($, quick, () => next)
-  await $.store.set(STORE_KEY, next)
+// 新しい一覧は、書く時点の一覧から作る（描いた時点の古い一覧から作ると、続けて押したときに前の操作を巻き戻す）。
+// ストアへは、書く順に 1 本ずつ、そのときの最新の一覧を書く（追い越されて、古い一覧が残らないように）。
+// 変わらなかったときは書かない。ただし、前の書き込みが失敗していたら、書き直す。失敗は知らせる（画面だけ変わった状態を黙らせない）。
+let storeChain: Promise<void> = Promise.resolve()
+let storeStale = false
+
+async function saveQuick($: any, change: (list: string[]) => string[]) {
+  let before: string[] = []
+  let next: string[] = []
+  await update($, quick, list => {
+    before = list
+    next = change(list)
+
+    return next
+  })
+  if (!storeStale && next.length === before.length && next.every((text, i) => text === before[i])) {
+    return
+  }
+  storeChain = storeChain.then(async () => {
+    try {
+      await $.store.set(STORE_KEY, await read($, quick))
+      storeStale = false
+    } catch {
+      storeStale = true
+      void Promise.resolve()
+        .then(() => $.ui.toast('定型文を保存できませんでした'))
+        .catch(() => {})
+    }
+  })
+  await storeChain
 }
 
 // パネルが開いていれば閉じ、閉じていれば（幅が足りず、描かれずに待っているときも）開く。
@@ -180,87 +208,102 @@ async function refreshNow($: any, desk: Desk, withGh: boolean): Promise<void> {
   await refreshBand($, cwd)
 }
 
-// モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。
-// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。full が失敗したときだけ偽を返す。
+// 帯に出す値を読む。個々の失敗は握りつぶし、その項目を空にする。例外は投げない。atom には書かない。
+// exact が真のときだけ内訳を正確に数える（full）。ふだんは概算（summary）。fullOk は、full が失敗したときだけ偽になる。
+async function readBandData($: any, exact: boolean) {
+  let fullOk = exact
+  let usage: any = null
+  try {
+    usage = await $.session.usage({ breakdown: exact ? 'full' : 'summary' })
+  } catch {
+    // 取れなければ、コンテキストと上限は出さない。
+    fullOk = false
+  }
+  // 正確に数えた結果に内訳が無いときも失敗として扱う（空の内訳が「正確」のまま残らないように）。
+  if (exact && fullOk && !Array.isArray(usage?.context?.breakdown?.categories)) {
+    fullOk = false
+  }
+  // 正確に数えるのに失敗したときは、概算で読み直して帯を保つ。
+  if (exact && !fullOk) {
+    try {
+      usage = await $.session.usage({ breakdown: 'summary' })
+    } catch {
+      usage = null
+    }
+  }
+  let model: string | null = null
+  try {
+    const name = await $.session.model()
+    model = typeof name === 'string' && name !== '' ? name : null
+  } catch {
+    // モデル名は出さない。
+  }
+  let cwd: string | null = null
+  try {
+    const dir = await $.session.cwd()
+    cwd = typeof dir === 'string' && dir !== '' ? dir : null
+  } catch {
+    // ディレクトリは出さない。
+  }
+  const effort = await cachedEffort($, cwd)
+  let list: { id: string; type: string; description: string; status: string }[] | null = null
+  try {
+    const got = await $.agent.list()
+    list = Array.isArray(got) ? got : null
+  } catch {
+    // セッションに結び付いていないときは、一覧を出さない。
+  }
+
+  return { fullOk, usage, model, cwd, effort, list }
+}
+
+// readBandData の結果を atom に書く。
+async function writeBandData($: any, got: Awaited<ReturnType<typeof readBandData>>) {
+  const { fullOk, usage, model, cwd, effort, list } = got
+  const ctx = usage?.context
+  const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
+  const b = ctx?.breakdown
+  // 正確に数えた内訳を出しているあいだは、概算の取得で内訳を上書きしない（書く時点の atom で決める）。
+  await update($, usageView, cur => ({
+    model,
+    effort,
+    cwd,
+    context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
+    rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
+    exactHeld: fullOk || cur.exactHeld,
+    breakdown: !fullOk && cur.exactHeld
+      ? cur.breakdown
+      : b === undefined || b === null || !Array.isArray(b.categories)
+        ? null
+        : {
+            categories: b.categories.map((c: any) => ({ name: String(c.name), kind: String(c.kind), tokens: Number(c.tokens) || 0 })),
+            rawMaxTokens: b.rawMaxTokens,
+            autoCompactThreshold: b.autoCompactThreshold,
+            isAutoCompactEnabled: b.isAutoCompactEnabled === true,
+            // 1 件ずつの名前: MCP ツールは「サーバー / ツール」、メモリファイルは path、スキルは name。
+            mcpTools: (b.mcpTools ?? []).map((t: any) => ({ name: `${t.serverName} / ${t.name}`, tokens: Number(t.tokens) || 0 })),
+            memoryFiles: (b.memoryFiles ?? []).map((f: any) => ({ name: String(f.path), tokens: Number(f.tokens) || 0 })),
+            skills: (b.skills?.skillFrontmatter ?? []).map((k: any) => ({ name: String(k.name), tokens: Number(k.tokens) || 0 })),
+          },
+  }))
+
+  // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
+  await update($, agentsView, cur => {
+    const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
+    const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
+
+    return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
+  })
+}
+
+// モデル・コンテキスト・上限・サブエージェントを読んで atom に書く。例外は投げない。
+// exact が真のときだけ内訳を正確に数える。正確に数えるのが失敗したときだけ偽を返す。
 async function fetchBandData($: any, exact: boolean): Promise<boolean> {
   let fullOk = exact
   try {
-    let usage: any = null
-    try {
-      usage = await $.session.usage({ breakdown: exact ? 'full' : 'summary' })
-    } catch {
-      // 取れなければ、コンテキストと上限は出さない。
-      fullOk = false
-    }
-    // 正確に数えた結果に内訳が無いときも失敗として扱う（空の内訳が「正確」のまま残らないように）。
-    if (exact && fullOk && !Array.isArray(usage?.context?.breakdown?.categories)) {
-      fullOk = false
-    }
-    // 正確に数えるのに失敗したときは、概算で読み直して帯を保つ。
-    if (exact && !fullOk) {
-      try {
-        usage = await $.session.usage({ breakdown: 'summary' })
-      } catch {
-        usage = null
-      }
-    }
-    let model: string | null = null
-    try {
-      const name = await $.session.model()
-      model = typeof name === 'string' && name !== '' ? name : null
-    } catch {
-      // モデル名は出さない。
-    }
-    let cwd: string | null = null
-    try {
-      const dir = await $.session.cwd()
-      cwd = typeof dir === 'string' && dir !== '' ? dir : null
-    } catch {
-      // ディレクトリは出さない。
-    }
-    const effort = await cachedEffort($, cwd)
-    let list: { id: string; type: string; description: string; status: string }[] | null = null
-    try {
-      const got = await $.agent.list()
-      list = Array.isArray(got) ? got : null
-    } catch {
-      // セッションに結び付いていないときは、一覧を出さない。
-    }
-
-    const ctx = usage?.context
-    const percent = typeof ctx?.percent === 'number' ? ctx.percent : null
-    const b = ctx?.breakdown
-    // 正確に数えた内訳を出しているあいだは、概算の取得で内訳を上書きしない（書く時点の atom で決める）。
-    await update($, usageView, cur => ({
-      model,
-      effort,
-      cwd,
-      context: percent === null ? null : { percent, tokens: typeof ctx.tokens === 'number' ? ctx.tokens : null, window: typeof ctx.window === 'number' ? ctx.window : null },
-      rateLimits: Array.isArray(usage?.rateLimits) ? usage.rateLimits : [],
-      exactHeld: fullOk || cur.exactHeld,
-      breakdown: !fullOk && cur.exactHeld
-        ? cur.breakdown
-        : b === undefined || b === null || !Array.isArray(b.categories)
-          ? null
-          : {
-              categories: b.categories.map((c: any) => ({ name: String(c.name), kind: String(c.kind), tokens: Number(c.tokens) || 0 })),
-              rawMaxTokens: b.rawMaxTokens,
-              autoCompactThreshold: b.autoCompactThreshold,
-              isAutoCompactEnabled: b.isAutoCompactEnabled === true,
-              // 1 件ずつの名前: MCP ツールは「サーバー / ツール」、メモリファイルは path、スキルは name。
-              mcpTools: (b.mcpTools ?? []).map((t: any) => ({ name: `${t.serverName} / ${t.name}`, tokens: Number(t.tokens) || 0 })),
-              memoryFiles: (b.memoryFiles ?? []).map((f: any) => ({ name: String(f.path), tokens: Number(f.tokens) || 0 })),
-              skills: (b.skills?.skillFrontmatter ?? []).map((k: any) => ({ name: String(k.name), tokens: Number(k.tokens) || 0 })),
-            },
-    }))
-
-    // 重なった取得や手での開閉と競らないように、次の値は書く時点の atom から作る。手で閉じた状態（open が偽）が勝つ。
-    await update($, agentsView, cur => {
-      const summary = list === null ? { running: 0, rows: [] as AgentRow[] } : summarizeAgents(list, new Map(Object.entries(cur.startedAt)), Date.now())
-      const opened = nextAgentsOpen({ running: cur.running, closedByUser: cur.running > 0 && !cur.open }, summary.running)
-
-      return { ...cur, running: summary.running, rows: summary.rows, open: opened.open }
-    })
+    const got = await readBandData($, exact)
+    fullOk = got.fullOk
+    await writeBandData($, got)
   } catch {
     // atom を更新できなくても、フックを失敗させない。
   }
@@ -695,48 +738,16 @@ export const register: Register = on => {
     const toggleMore = (id: Tab) => void update($, more, v => ({ ...v, [id]: !v[id] })).catch(() => {})
     let body
     if (current === 'history') {
-      const sent = await read($, history)
-      const phrases = await read($, quick)
-      const chosen = await read($, selected)
-      body = (
-        <Box flexDirection="column" gap={1}>
-          {sent.length === 0 && <Text dimColor>なし</Text>}
-          {sent
-            .map((text, i) => ({ text, n: i + 1 }))
-            .reverse()
-            .slice(0, shownCount(sent.length, opened.history))
-            .map(({ text, n }) => {
-              // 開いているかの判定は 1 回にして、label と見た目で食い違わないようにする。
-              const isOpen = chosen === n
-              const mark = isOpen ? '▴' : '▾'
-              const word = isOpen ? '短く' : '全文'
-
-              return (
-                <Box flexDirection="column">
-                  <Text>{`${n}. ${isOpen ? stripControl(text) : preview(text)}`}</Text>
-                  <Box gap={2}>
-                    <Button
-                      key={`history-${n}`}
-                      plain
-                      label={`${mark} ${word}`}
-                      onPress={() => update($, selected, now => (now === n ? null : n))}
-                    >
-                      <Text color="suggestion">{`${mark} ${word}`}</Text>
-                    </Button>
-                    <Button
-                      key={`history-add-${n}`}
-                      plain
-                      label="＋ 定型文に追加"
-                      onPress={() => saveQuick($, addQuick(phrases, text))}
-                    >
-                      <Text color="suggestion">＋ 定型文に追加</Text>
-                    </Button>
-                  </Box>
-                </Box>
-              )
-            })}
-          {renderMore({ Text, Button }, { tab: 'history', total: sent.length, open: opened.history, onToggle: () => toggleMore('history') })}
-        </Box>
+      body = renderHistoryTab(
+        { Box, Text, Button },
+        {
+          sent: await read($, history),
+          chosen: await read($, selected),
+          open: opened.history,
+          onToggleFull: n => void update($, selected, now => (now === n ? null : n)).catch(() => {}),
+          onAddQuick: text => void saveQuick($, list => addQuick(list, text)).catch(() => {}),
+          onToggleMore: () => toggleMore('history'),
+        },
       )
     } else if (current === 'git') {
       body = renderBranchTab(
@@ -745,7 +756,6 @@ export const register: Register = on => {
           snapshot: (await read($, snapshot)) as Snapshot | null,
           selected: await read($, branchSel),
           columns: e.props.bodyColumns,
-          offsetMin: -new Date().getTimezoneOffset(),
           onSelect: name => void selectBranch($, desk, name),
           more: { open: opened.git, onToggle: () => toggleMore('git') },
           onNext: next => void pressNext($, next),
@@ -754,74 +764,18 @@ export const register: Register = on => {
         },
       )
     } else {
-      const phrases = await read($, quick)
-      body = (
-        <Box flexDirection="column" gap={1}>
-          {/* 文を足すと key が変わって作り直され、入力欄が空になる。足せなかったとき（空・重複）は、入力した文が残る。 */}
-          <Input
-            key={`quick-new-${phrases.length}`}
-            placeholder="新しい定型文を入力して Enter"
-            submitLabel="追加"
-            onSubmit={value => {
-              const next = addQuick(phrases, value)
-              if (next.length !== phrases.length) {
-                void saveQuick($, next)
-              }
-            }}
-          />
-          {phrases.length === 0 && <Text dimColor>なし</Text>}
-          {phrases.slice(0, shownCount(phrases.length, opened.quick)).map((text, i) => (
-            <Box flexDirection="column">
-              <Text>{stripControl(text)}</Text>
-              <Box gap={2}>
-                <Button
-                  key={`quick-${i}`}
-                  plain
-                  label="▶ 送信"
-                  onPress={() => {
-                    void sendQuick($, text)
-                  }}
-                >
-                  <Text color="suggestion">▶ 送信</Text>
-                </Button>
-                <Button
-                  key={`quick-del-${i}`}
-                  plain
-                  label="× 削除"
-                  onPress={() => saveQuick($, removeQuick(phrases, i))}
-                >
-                  <Text color="error">× 削除</Text>
-                </Button>
-                {/* 順は 送信・削除・上へ・下へ。先頭の「上へ」と末尾の「下へ」は、押せない薄い字で位置を保つ。 */}
-                {i > 0 ? (
-                  <Button
-                    key={`quick-up-${i}`}
-                    plain
-                    label="▲ 上へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, -1))}
-                  >
-                    <Text dimColor>▲ 上へ</Text>
-                  </Button>
-                ) : (
-                  <Text color={OFF_COLOR}>▲ 上へ</Text>
-                )}
-                {i < phrases.length - 1 ? (
-                  <Button
-                    key={`quick-down-${i}`}
-                    plain
-                    label="▼ 下へ"
-                    onPress={() => saveQuick($, moveQuick(phrases, i, 1))}
-                  >
-                    <Text dimColor>▼ 下へ</Text>
-                  </Button>
-                ) : (
-                  <Text color={OFF_COLOR}>▼ 下へ</Text>
-                )}
-              </Box>
-            </Box>
-          ))}
-          {renderMore({ Text, Button }, { tab: 'quick', total: phrases.length, open: opened.quick, onToggle: () => toggleMore('quick') })}
-        </Box>
+      body = renderQuickTab(
+        { Box, Text, Button, Input },
+        {
+          phrases: await read($, quick),
+          open: opened.quick,
+          onAdd: value => void saveQuick($, list => addQuick(list, value)).catch(() => {}),
+          onSend: text => void sendQuick($, text),
+          // 位置ではなく文で指す（続けて押したとき、詰まった一覧の別の文を消さない）。一覧にない文は、何もしない。
+          onRemove: text => void saveQuick($, list => removeQuick(list, list.indexOf(text))).catch(() => {}),
+          onMove: (text, delta) => void saveQuick($, list => moveQuick(list, list.indexOf(text), delta)).catch(() => {}),
+          onToggleMore: () => toggleMore('quick'),
+        },
       )
     }
 
