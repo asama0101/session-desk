@@ -304,6 +304,24 @@ test('legendHidden hides the legend rows and their details, keeps the compact li
   expect(byKey(hidden, 'band-detail-mcp')).toBeUndefined()
 })
 
+test('the 凡例 button sits beside コンテキスト in the label row, left of the numbers; it is still there without a context', async () => {
+  const row = find(draw({ context: CTX(86), breakdown: BREAKDOWN() }), n => n.props?.justifyContent === 'space-between')[0]
+  expect(textsOf(row)).toEqual(['📊 コンテキスト', '86%', '860k / 1M'])
+  expect(labelsOf(row)).toEqual(['凡例を隠す'])
+  const flat = JSON.stringify(row)
+  expect(flat.indexOf('コンテキスト')).toBeLessThan(flat.indexOf('band-legend'))
+  expect(flat.indexOf('band-legend')).toBeLessThan(flat.indexOf('86%'))
+  expect(flat).toContain('▾ 凡例')
+  const hidden = find(draw({ context: CTX(86), breakdown: { ...BREAKDOWN(), legendHidden: true } }), n => n.props?.justifyContent === 'space-between')[0]
+  expect(labelsOf(hidden)).toEqual(['凡例を出す'])
+  expect(JSON.stringify(hidden)).toContain('▸ 凡例')
+  const noCtx = draw({ context: null, breakdown: BREAKDOWN() })
+  expect(byKey(noCtx, 'band-legend')).toBeDefined()
+  // 凡例のボタンは、compact の行にはもう無い。
+  const compactRow = find(noCtx, n => n.props?.flexWrap === 'wrap' && textsOf(n).includes('概算'))[0]
+  expect(JSON.stringify(compactRow)).not.toContain('band-legend')
+})
+
 test('the limits section has no rule above it, only one blank row', async () => {
   const tree = draw({ context: CTX(50), limits: [{ label: '5時間枠', percent: 32, remaining: null }] })
   expect(textsOf(tree).filter(x => /^─+$/.test(x))).toHaveLength(0)
