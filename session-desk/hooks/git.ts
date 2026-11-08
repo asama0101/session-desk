@@ -65,12 +65,12 @@ function emptySnapshot(cwd: string, gitAt: string, problem: Problem, warnings: s
   return { cwd, gitAt, ghAt: null, problem, ghProblem: false, prs: null, prCapped: false, baseRef: null, remotes: null, release: null, branches: [], warnings }
 }
 
-// 現在のブランチ、選択中のブランチ、残りは名前順に並べて、先頭 limit 件。
-export function pickBudget(names: readonly string[], current: string | null, selected: string | null, limit: number): string[] {
+// 現在のブランチ、選択中のブランチ、残りは名前順に並べる。git の呼び出し数の上限は、collect の spend が持つ。
+export function orderBranches(names: readonly string[], current: string | null, selected: string | null): string[] {
   const rest = names.filter(n => n !== current && n !== selected).sort()
   const first = [current, selected].filter((n, i, all): n is string => n !== null && names.includes(n) && all.indexOf(n) === i)
 
-  return [...first, ...rest].slice(0, limit)
+  return [...first, ...rest]
 }
 
 async function countOf(run: Run, range: string): Promise<number | null> {
@@ -114,6 +114,32 @@ async function ancestry(run: Run, ref: string, oid: string): Promise<Relation> {
 
 const newestClosed = (prs: readonly Pr[]) =>
   prs.filter(p => p.state !== 'OPEN' && !p.isCrossRepository).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
+
+// ブランチ ref と、同名の PR（own）の関係。閉じた PR のうち最新の 1 件だけ、git で祖先かを調べる。
+// spend は git を呼んでよいか（collect は呼び出し数に上限があり、使い切ったら調べずに 'unknown'）。
+async function relationsOf(
+  run: Run,
+  own: readonly Pr[],
+  ref: string,
+  tip: string,
+  ahead: number | null,
+  baseRef: string | null,
+  spend: () => boolean,
+): Promise<Map<number, Relation>> {
+  const relation = sameOrOther(own, tip)
+  const candidate = newestClosed(own)
+  if (candidate !== undefined && !own.some(p => p.state === 'OPEN') && relation.get(candidate.number) !== 'same') {
+    let found = spend() ? await ancestry(run, ref, candidate.headRefOid) : 'unknown'
+    // 自分の commit がないブランチ（古い main から切り直した直後）は、同名の古い PR の元にはなれない。
+    // ただし、PR の先頭が基準に入っている（merge commit でマージ済み）ときは、そのまま採る。
+    if (found === 'ancestor' && ahead === 0 && baseRef !== null && spend() && !(await isInBase(run, candidate.headRefOid, baseRef))) {
+      found = 'other'
+    }
+    relation.set(candidate.number, found)
+  }
+
+  return relation
+}
 
 // ref（origin の既定ブランチ）から届く最新のタグと、そのタグ以降の commit の数。手元の main ではなく origin で数えるので、pull の前後で数が変わらない。
 async function releaseOf(run: Run, ref: string): Promise<{ tag: string; ahead: number } | null> {
@@ -238,7 +264,7 @@ export async function collect(
   const spend = () => (left > 0 ? (left--, true) : false)
   const names = heads.filter(n => n !== defaultName)
   const built = new Map<string, BranchRow>()
-  for (const name of pickBudget(names, currentName, opts.selected, names.length)) {
+  for (const name of orderBranches(names, currentName, opts.selected)) {
     const tip = oidOf.get(name)?.oid ?? ''
     const ref = `${HEADS}${name}`
 
@@ -264,17 +290,7 @@ export async function collect(
     }
 
     const own = (prs ?? []).filter(p => p.headRefName === name)
-    const relation = sameOrOther(own, tip)
-    const candidate = newestClosed(own)
-    if (candidate !== undefined && !own.some(p => p.state === 'OPEN') && relation.get(candidate.number) !== 'same') {
-      let found = spend() ? await ancestry(run, ref, candidate.headRefOid) : 'unknown'
-      // 自分の commit がないブランチ（古い main から切り直した直後）は、同名の古い PR の元にはなれない。
-      // ただし、PR の先頭が基準に入っている（merge commit でマージ済み）ときは、そのまま採る。
-      if (found === 'ancestor' && ahead === 0 && baseRef !== null && spend() && !(await isInBase(run, candidate.headRefOid, baseRef))) {
-        found = 'other'
-      }
-      relation.set(candidate.number, found)
-    }
+    const relation = await relationsOf(run, own, ref, tip, ahead, baseRef, spend)
     const adopted = prs === null ? { pr: null, known: false } : adoptPr(own, p => relation.get(p.number) ?? 'other')
     const prKnown = adopted.known && !(prCapped && adopted.pr === null)
 
@@ -348,15 +364,7 @@ export async function requeryPr(
     return { pr: null, known: false }
   }
   const own = prs.filter(p => p.headRefName === name)
-  const relation = sameOrOther(own, tip)
-  const candidate = newestClosed(own)
-  if (candidate !== undefined && !own.some(p => p.state === 'OPEN') && relation.get(candidate.number) !== 'same') {
-    let found = await ancestry(run, `refs/heads/${name}`, candidate.headRefOid)
-    if (found === 'ancestor' && ahead === 0 && baseRef !== null && !(await isInBase(run, candidate.headRefOid, baseRef))) {
-      found = 'other'
-    }
-    relation.set(candidate.number, found)
-  }
+  const relation = await relationsOf(run, own, `refs/heads/${name}`, tip, ahead, baseRef, () => true)
 
   return adoptPr(own, p => relation.get(p.number) ?? 'other')
 }

@@ -156,6 +156,18 @@ test('formatAt shows MM/DD HH:mm in the given offset, and a dash for a bad date'
   expect(formatAt('not a date', 540)).toBe('—')
 })
 
+test('formatAt without an offset uses the terminal offset at that date, so summer and winter both match the local clock', async () => {
+  const local = (iso: string) => {
+    const d = new Date(iso)
+    const pad = (n: number) => String(n).padStart(2, '0')
+
+    return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  for (const iso of ['2026-01-15T10:00:00Z', '2026-07-01T10:00:00Z']) {
+    expect(formatAt(iso)).toBe(local(iso))
+  }
+})
+
 test('the heading counts the branches; each row shows the mark, kind, name and now', async ($, on) => {
   const e = engine(on)
   await start($)

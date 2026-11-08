@@ -80,6 +80,28 @@ test('barCells: min 1 cell each, total equals width, rest is free', async () => 
   expect(none.filter((c) => c.cells > 0)).toEqual([{ id: 'free', cells: 16 }])
 })
 
+test('barCells: never paints more cells than the usage, even with many small parts', async () => {
+  const parts = [
+    { id: 'messages' as const, tokens: 3_000 },
+    { id: 'mcp' as const, tokens: 28_000 },
+    { id: 'systemTools' as const, tokens: 16_000 },
+    { id: 'systemPrompt' as const, tokens: 8_000 },
+    { id: 'memory' as const, tokens: 5_000 },
+    { id: 'skills' as const, tokens: 4_000 },
+  ]
+  // 5% of 40 = 2 cells: the two largest parts only.
+  const low = barCells(parts, 5, 40)
+  expect(low.filter((c) => c.id !== 'free')).toEqual([
+    { id: 'mcp', cells: 1 },
+    { id: 'systemTools', cells: 1 },
+  ])
+  expect(low.reduce((a, c) => a + c.cells, 0)).toBe(40)
+
+  // Rounding up several small parts must not push the bar past the usage.
+  const rounded = barCells([{ id: 'messages', tokens: 50_757 }, { id: 'mcp', tokens: 85_008 }, { id: 'memory', tokens: 4_773 }, { id: 'skills', tokens: 46 }, { id: 'systemTools', tokens: 82_551 }, { id: 'systemPrompt', tokens: 29_456 }], 53, 15)
+  expect(rounded.filter((c) => c.id !== 'free').reduce((a, c) => a + c.cells, 0)).toBe(8)
+})
+
 test('classifyCategory follows kind and the exact names', async () => {
   expect(classifyCategory({ name: 'Free space', kind: 'free' })).toBe('free')
   expect(classifyCategory({ name: 'Autocompact buffer', kind: 'buffer' })).toBe('other')

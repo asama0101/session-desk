@@ -28,13 +28,16 @@ const WIDE_COLUMNS = 100
 
 const pad = (n: number) => String(n).padStart(2, '0')
 
-// offsetMin（東が正）の時刻で `MM/DD HH:mm`。読めない日時は `—`。
-export function formatAt(iso: string, offsetMin: number): string {
+// offsetMin（東が正）の時刻で `MM/DD HH:mm`。読めない日時は `—`。省くと、その日時の時点での、この端末の時差を使う（夏時間でずれない）。
+export function formatAt(iso: string, offsetMin?: number): string {
   const ms = Date.parse(iso)
   if (Number.isNaN(ms)) {
     return '—'
   }
-  const d = new Date(ms + offsetMin * 60_000)
+  const d = new Date(ms + (offsetMin ?? -new Date(ms).getTimezoneOffset()) * 60_000)
+  if (Number.isNaN(d.getTime())) {
+    return '—'
+  }
 
   return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
 }
@@ -122,7 +125,7 @@ function stageLine(stage: Stage, row: BranchRow): string {
   return parts.filter(part => part !== '').join('  ')
 }
 
-function stageDate(stage: Stage, offsetMin: number): string {
+function stageDate(stage: Stage, offsetMin?: number): string {
   return stage.status === 'done' ? (stage.at === null ? '—' : formatAt(stage.at, offsetMin)) : ''
 }
 
@@ -135,7 +138,8 @@ type Args = {
   snapshot: Snapshot | null
   selected: string | null
   columns: number
-  offsetMin: number
+  // 省くと、各日時の時点での端末の時差（テストで固定するときだけ渡す）。
+  offsetMin?: number
   onSelect(name: string): void
   // 一覧の「もっと見る」。閉じているときは、先頭から数件と、いまのブランチ・選んだブランチだけを出す。
   more: { open: boolean; onToggle(): void }

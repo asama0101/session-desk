@@ -388,3 +388,54 @@ test('a phrase that cannot be sent shows a toast instead of failing silently', a
   expect(toasts).toContain('依頼を送れませんでした')
   await ui.unmount()
 })
+
+test('a phrase that cannot be saved shows a toast; the screen still changes', async ($, on) => {
+  const toasts: string[] = []
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => {
+    throw new Error('disk full')
+  })
+  on('ui.toast', (_: any, e: any) => {
+    toasts.push(e.text)
+
+    return { value: undefined }
+  })
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
+  const ui = await open($)
+  await ui.press({ key: 'quick-del-0' })
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 0))
+  expect(toasts).toContain('定型文を保存できませんでした')
+  expect(await labels(ui)).toEqual([PHRASES[1], PHRASES[2]])
+  await ui.unmount()
+})
+
+test('adding a duplicate does not write the store again', async ($, on) => {
+  let writes = 0
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => {
+    writes++
+
+    return { value: undefined }
+  })
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
+  const ui = await open($)
+  await ui.input({ key: 'quick-new-3', text: PHRASES[0] ?? '' })
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 0))
+  expect(writes).toBe(0)
+  await ui.unmount()
+})
+
+test('pressing delete twice on the same drawn row removes only that phrase', async ($, on) => {
+  const { saved } = fakeEngine(on)
+  await start($)
+  const ui = await open($)
+  await Promise.all([ui.press({ key: 'quick-del-0' }), ui.press({ key: 'quick-del-0' })])
+  for (let i = 0; i < 10; i++) await new Promise(resolve => setTimeout(resolve, 0))
+  expect(saved.get('quick')).toEqual(await labels(ui))
+  expect(saved.get('quick')).not.toContain(PHRASES[0])
+  await ui.unmount()
+})
