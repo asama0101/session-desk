@@ -140,17 +140,24 @@ export function renderBand(ui: Ui, a: BandArgs) {
   const contextBlock =
     ctx === null && bd === null ? null : (
       <Box flexDirection="column">
-        {ctx !== null && (
-          <Box justifyContent="space-between">
+        <Box justifyContent="space-between">
+          <Box gap={2}>
             <Text dimColor>{`${ICONS.context} コンテキスト`}</Text>
+            {bd !== null && (
+              <Button key="band-legend" plain label={bd.legendHidden ? '凡例を出す' : '凡例を隠す'} onPress={() => a.on.toggleLegend()}>
+                <Text dimColor>{bd.legendHidden ? '▸ 凡例' : '▾ 凡例'}</Text>
+              </Button>
+            )}
+          </Box>
+          {ctx !== null && (
             <Box gap={2}>
               {pct(ctx.percent, true)}
               {ctx.tokens !== null && ctx.window !== null && ctx.tokens > 0 && ctx.window > 0 && (
                 <Text color={usageColor(ctx.percent) === 'normal' ? 'success' : usageColor(ctx.percent)}>{`${formatTokens(ctx.tokens)} / ${formatTokens(ctx.window)}`}</Text>
               )}
             </Box>
-          </Box>
-        )}
+          )}
+        </Box>
         {ctx !== null && bar(ctx.parts, ctx.percent, barWidth)}
         {bd !== null && (
           <Box flexDirection="column" marginTop={1}>
@@ -191,9 +198,6 @@ export function renderBand(ui: Ui, a: BandArgs) {
               <Text dimColor>{bd.exact ? '正確' : '概算'}</Text>
               <Button key="band-exact" plain label="正確に数える" onPress={() => a.on.exact()}>
                 <Text color="suggestion">正確に数える</Text>
-              </Button>
-              <Button key="band-legend" plain label={bd.legendHidden ? '凡例を出す' : '凡例を隠す'} onPress={() => a.on.toggleLegend()}>
-                <Text dimColor>{bd.legendHidden ? '▸ 凡例' : '▾ 凡例'}</Text>
               </Button>
             </Box>
           </Box>
